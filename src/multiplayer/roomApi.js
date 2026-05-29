@@ -135,6 +135,21 @@ export async function fetchRoomPlayers(roomId) {
   return response.data ?? []
 }
 
+export async function fetchRoomState(roomId) {
+  const client = getSupabaseClient()
+  const response = await client
+    .from('room_states')
+    .select('room_id, version, state_json, updated_by, updated_at')
+    .eq('room_id', roomId)
+    .maybeSingle()
+
+  if (response.error) {
+    throw new Error(response.error.message)
+  }
+
+  return response.data
+}
+
 export async function setReady({ roomId, userId, isReady }) {
   const client = getSupabaseClient()
   const response = await client
@@ -146,6 +161,84 @@ export async function setReady({ roomId, userId, isReady }) {
   if (response.error) {
     throw new Error(response.error.message)
   }
+}
+
+export async function setRoomStatus({ roomId, hostUserId, status }) {
+  const client = getSupabaseClient()
+  const response = await client
+    .from('rooms')
+    .update({ status })
+    .eq('id', roomId)
+    .eq('host_user_id', hostUserId)
+    .select('id, code, host_user_id, status, max_players, created_at, updated_at')
+    .maybeSingle()
+
+  if (response.error) {
+    throw new Error(response.error.message)
+  }
+
+  if (!response.data) {
+    throw new Error('Only the room host can change room status.')
+  }
+
+  return response.data
+}
+
+export async function saveRoomState({
+  roomId,
+  nextState,
+  updatedByUserId,
+  expectedVersion = null,
+}) {
+  const client = getSupabaseClient()
+
+  if (expectedVersion === null || expectedVersion === undefined) {
+    const response = await client
+      .from('room_states')
+      .upsert(
+        {
+          room_id: roomId,
+          version: 1,
+          state_json: nextState,
+          updated_by: updatedByUserId,
+        },
+        { onConflict: 'room_id' },
+      )
+      .select('room_id, version, state_json, updated_by, updated_at')
+      .maybeSingle()
+
+    if (response.error) {
+      throw new Error(response.error.message)
+    }
+
+    if (!response.data) {
+      throw new Error('Unable to save room state.')
+    }
+
+    return response.data
+  }
+
+  const response = await client
+    .from('room_states')
+    .update({
+      version: Number(expectedVersion) + 1,
+      state_json: nextState,
+      updated_by: updatedByUserId,
+    })
+    .eq('room_id', roomId)
+    .eq('version', expectedVersion)
+    .select('room_id, version, state_json, updated_by, updated_at')
+    .maybeSingle()
+
+  if (response.error) {
+    throw new Error(response.error.message)
+  }
+
+  if (!response.data) {
+    throw new Error('Room state changed on another device. Please try again.')
+  }
+
+  return response.data
 }
 
 export function subscribeToRoom({ roomId, onAnyChange }) {
@@ -168,6 +261,16 @@ export function subscribeToRoom({ roomId, onAnyChange }) {
         event: '*',
         schema: 'public',
         table: 'room_players',
+        filter: `room_id=eq.${roomId}`,
+      },
+      onAnyChange,
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'room_states',
         filter: `room_id=eq.${roomId}`,
       },
       onAnyChange,

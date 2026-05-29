@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
   applyPlayerAction,
@@ -23,6 +23,7 @@ import ShowdownVotingPanel from './components/ShowdownVotingPanel'
 import StatusRow from './components/StatusRow'
 import TableHeader from './components/TableHeader'
 import TurnPanel from './components/TurnPanel'
+import { saveRoomState, setRoomStatus } from './multiplayer/roomApi'
 
 const PLAYER_NAMES = ['North', 'East', 'South', 'West']
 const INITIAL_PULSE_TICKS = {
@@ -34,8 +35,18 @@ const INITIAL_PULSE_TICKS = {
   winnerLine: 0,
 }
 
+function isWordGameState(candidate) {
+  return (
+    candidate &&
+    typeof candidate === 'object' &&
+    Array.isArray(candidate.players) &&
+    typeof candidate.phase === 'string' &&
+    typeof candidate.handNumber === 'number'
+  )
+}
+
 function App() {
-  const [game, setGame] = useState(() => {
+  const [localGame, setLocalGame] = useState(() => {
     return createInitialGame({
       playerNames: PLAYER_NAMES,
       startingStack: 400,
@@ -48,8 +59,18 @@ function App() {
   const [revealByPlayerId, setRevealByPlayerId] = useState({})
   const [playerVotes, setPlayerVotes] = useState({})
   const [judgeVote, setJudgeVote] = useState('')
+  const [onlineSession, setOnlineSession] = useState(null)
+  const [onlineGameBusy, setOnlineGameBusy] = useState(false)
   const [pulseTicks, setPulseTicks] = useState(INITIAL_PULSE_TICKS)
-  const previousPhaseRef = useRef(game.phase)
+  const previousPhaseRef = useRef(null)
+
+  const onlineGame = useMemo(() => {
+    const candidate = onlineSession?.roomState?.state_json
+    return isWordGameState(candidate) ? candidate : null
+  }, [onlineSession?.roomState?.state_json])
+
+  const isOnlinePlaying = Boolean(onlineSession?.room?.status === 'playing' && onlineGame)
+  const game = isOnlinePlaying ? onlineGame : localGame
 
   const actor = getCurrentActor(game)
   const legal = getLegalActions(game)
@@ -104,8 +125,59 @@ function App() {
     }) &&
     effectiveJudgeVote !== ''
 
+  const myOnlineSeatIndex = onlineSession?.myPlayer?.seat_index ?? null
+  const roomId = onlineSession?.room?.id ?? null
+  const roomStateVersion = onlineSession?.roomState?.version ?? null
+  const userId = onlineSession?.userId ?? null
+
+  const persistOnlineGame = useCallback(
+    async (nextGame, nextStatus = null) => {
+      if (!roomId || !userId) {
+        throw new Error('No active room is connected.')
+      }
+
+      const savedRoomState = await saveRoomState({
+        roomId,
+        nextState: nextGame,
+        updatedByUserId: userId,
+        expectedVersion: roomStateVersion,
+      })
+
+      if (nextStatus) {
+        await setRoomStatus({
+          roomId,
+          hostUserId: onlineSession?.room?.host_user_id,
+          status: nextStatus,
+        })
+      }
+
+      setOnlineSession((previous) => {
+        if (!previous) {
+          return previous
+        }
+
+        return {
+          ...previous,
+          roomState: savedRoomState,
+          room: nextStatus
+            ? {
+                ...previous.room,
+                status: nextStatus,
+              }
+            : previous.room,
+        }
+      })
+    },
+    [onlineSession?.room?.host_user_id, roomId, roomStateVersion, userId],
+  )
+
   useEffect(() => {
     const previousPhase = previousPhaseRef.current
+
+    if (previousPhase === null) {
+      previousPhaseRef.current = game.phase
+      return
+    }
 
     if (previousPhase === game.phase) {
       return
@@ -134,14 +206,19 @@ function App() {
     })
   }, [game.phase])
 
-  function runAction(type, amountOverride) {
+  async function runAction(type, amountOverride) {
     try {
       const nextGame = applyPlayerAction(
         game,
         type,
         amountOverride ?? Number(amountInput),
       )
-      setGame(nextGame)
+      if (isOnlinePlaying) {
+        setOnlineGameBusy(true)
+        await persistOnlineGame(nextGame)
+      } else {
+        setLocalGame(nextGame)
+      }
       setErrorText('')
 
       const nextLegal = getLegalActions(nextGame)
@@ -152,33 +229,133 @@ function App() {
       }
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Action failed.')
+    } finally {
+      setOnlineGameBusy(false)
     }
   }
 
-  function beginNextHand() {
+  async function beginNextHand() {
     const nextGame = startNextHand(game)
-    setGame(nextGame)
-    setErrorText('')
-    setAmountInput('')
-    setPlayerVotes({})
-    setJudgeVote('')
-    setRevealByPlayerId({})
+    try {
+      if (isOnlinePlaying) {
+        setOnlineGameBusy(true)
+        await persistOnlineGame(nextGame)
+      } else {
+        setLocalGame(nextGame)
+      }
+      setErrorText('')
+      setAmountInput('')
+      setPlayerVotes({})
+      setJudgeVote('')
+      setRevealByPlayerId({})
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not start next hand.')
+    } finally {
+      setOnlineGameBusy(false)
+    }
   }
 
-  function resolveVotes() {
+  async function resolveVotes() {
     try {
       const nextGame = resolveShowdownVotes(game, {
         playerVotes: effectivePlayerVotes,
         judgeVote: Number(effectiveJudgeVote),
       })
-      setGame(nextGame)
+      if (isOnlinePlaying) {
+        setOnlineGameBusy(true)
+        await persistOnlineGame(nextGame)
+      } else {
+        setLocalGame(nextGame)
+      }
       setErrorText('')
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Vote resolution failed.')
+    } finally {
+      setOnlineGameBusy(false)
     }
   }
 
+  const handleOnlineSessionChange = useCallback((nextSession) => {
+    setOnlineSession(nextSession)
+  }, [])
+
+  async function handleStartOnlineGame() {
+    if (!onlineSession?.room?.id || !userId) {
+      setErrorText('Join a room before starting an online game.')
+      return
+    }
+
+    if (onlineSession.room.host_user_id !== userId) {
+      setErrorText('Only the room host can start the online game.')
+      return
+    }
+
+    try {
+      setOnlineGameBusy(true)
+      const initialSharedGame = createInitialGame({
+        playerNames: PLAYER_NAMES,
+        startingStack: 400,
+        smallBlind: 5,
+        bigBlind: 10,
+      })
+
+      const savedRoomState = await saveRoomState({
+        roomId: onlineSession.room.id,
+        nextState: initialSharedGame,
+        updatedByUserId: userId,
+        expectedVersion: onlineSession.roomState?.version ?? null,
+      })
+
+      await setRoomStatus({
+        roomId: onlineSession.room.id,
+        hostUserId: userId,
+        status: 'playing',
+      })
+
+      setOnlineSession((previous) => {
+        if (!previous) {
+          return previous
+        }
+
+        return {
+          ...previous,
+          roomState: savedRoomState,
+          room: {
+            ...previous.room,
+            status: 'playing',
+          },
+        }
+      })
+
+      setErrorText('')
+      setAmountInput('')
+      setPlayerVotes({})
+      setJudgeVote('')
+      setRevealByPlayerId({})
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Unable to start online game.')
+    } finally {
+      setOnlineGameBusy(false)
+    }
+  }
+
+  const isMyTurnOnline = isOnlinePlaying && actor && actor.id === myOnlineSeatIndex
+  const effectiveRevealByPlayerId = useMemo(() => {
+    if (!isOnlinePlaying || myOnlineSeatIndex === null) {
+      return revealByPlayerId
+    }
+
+    return {
+      ...revealByPlayerId,
+      [myOnlineSeatIndex]: true,
+    }
+  }, [isOnlinePlaying, myOnlineSeatIndex, revealByPlayerId])
+
   function toggleWordReveal(playerId) {
+    if (isOnlinePlaying && myOnlineSeatIndex !== null && playerId !== myOnlineSeatIndex) {
+      return
+    }
+
     setRevealByPlayerId((previous) => {
       return {
         ...previous,
@@ -189,7 +366,11 @@ function App() {
 
   return (
     <main className="table-shell">
-      <OnlineRoomPanel />
+      <OnlineRoomPanel
+        onSessionChange={handleOnlineSessionChange}
+        onStartOnlineGame={handleStartOnlineGame}
+        onlineGameBusy={onlineGameBusy}
+      />
 
       <TableHeader />
 
@@ -209,7 +390,7 @@ function App() {
         currentPlayerIndex={game.currentPlayerIndex}
         phase={game.phase}
         handComplete={game.handComplete}
-        revealByPlayerId={revealByPlayerId}
+        revealByPlayerId={effectiveRevealByPlayerId}
         onToggleWordReveal={toggleWordReveal}
       />
 
@@ -247,7 +428,14 @@ function App() {
             legal={legal}
             amountInput={amountInput}
             setAmountInput={setAmountInput}
-            onRunAction={runAction}
+            onRunAction={(type, amountOverride) => {
+              if (isOnlinePlaying && !isMyTurnOnline) {
+                setErrorText('It is not your turn yet.')
+                return
+              }
+
+              runAction(type, amountOverride)
+            }}
             pulseTick={pulseTicks.turnPanel}
           />
         )}

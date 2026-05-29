@@ -5,6 +5,7 @@ import {
   ensureAnonymousSession,
   fetchRoom,
   fetchRoomPlayers,
+  fetchRoomState,
   joinRoomByCode,
   leaveRoom,
   normalizeRoomCode,
@@ -14,11 +15,16 @@ import {
 
 const DEFAULT_DISPLAY_NAME = 'Player'
 
-function OnlineRoomPanel() {
+function OnlineRoomPanel({
+  onSessionChange = null,
+  onStartOnlineGame = null,
+  onlineGameBusy = false,
+}) {
   const [userId, setUserId] = useState('')
   const [displayName, setDisplayName] = useState(DEFAULT_DISPLAY_NAME)
   const [roomCodeInput, setRoomCodeInput] = useState('')
   const [room, setRoom] = useState(null)
+  const [roomState, setRoomState] = useState(null)
   const [players, setPlayers] = useState([])
   const [busy, setBusy] = useState(false)
   const [errorText, setErrorText] = useState('')
@@ -68,9 +74,10 @@ function OnlineRoomPanel() {
 
     async function refreshRoomState() {
       try {
-        const [nextRoom, nextPlayers] = await Promise.all([
+        const [nextRoom, nextPlayers, nextRoomState] = await Promise.all([
           fetchRoom(room.id),
           fetchRoomPlayers(room.id),
+          fetchRoomState(room.id),
         ])
 
         if (!isMounted) {
@@ -79,6 +86,7 @@ function OnlineRoomPanel() {
 
         setRoom(nextRoom)
         setPlayers(nextPlayers)
+        setRoomState(nextRoomState)
         setErrorText('')
       } catch (error) {
         if (!isMounted) {
@@ -110,6 +118,20 @@ function OnlineRoomPanel() {
     return players.find((player) => player.user_id === userId) ?? null
   }, [players, userId])
 
+  useEffect(() => {
+    if (!onSessionChange) {
+      return
+    }
+
+    onSessionChange({
+      userId,
+      room,
+      roomState,
+      players,
+      myPlayer,
+    })
+  }, [myPlayer, onSessionChange, players, room, roomState, userId])
+
   const seatRows = useMemo(() => {
     const maxPlayers = room?.max_players ?? 4
     const seats = []
@@ -133,8 +155,10 @@ function OnlineRoomPanel() {
         fetchRoom(created.room_id),
         fetchRoomPlayers(created.room_id),
       ])
+      const nextRoomState = await fetchRoomState(created.room_id)
       setRoom(nextRoom)
       setPlayers(nextPlayers)
+      setRoomState(nextRoomState)
       setDisplayName(trimmedName)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Room creation failed.')
@@ -157,8 +181,10 @@ function OnlineRoomPanel() {
         fetchRoom(joined.room_id),
         fetchRoomPlayers(joined.room_id),
       ])
+      const nextRoomState = await fetchRoomState(joined.room_id)
       setRoom(nextRoom)
       setPlayers(nextPlayers)
+      setRoomState(nextRoomState)
       setDisplayName(trimmedName)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Join failed.')
@@ -199,6 +225,7 @@ function OnlineRoomPanel() {
     try {
       await leaveRoom({ roomId: room.id })
       setRoom(null)
+      setRoomState(null)
       setPlayers([])
       setRoomCodeInput('')
     } catch (error) {
@@ -276,10 +303,30 @@ function OnlineRoomPanel() {
             <button type="button" disabled={busy || !myPlayer} onClick={handleToggleReady}>
               {myPlayer?.is_ready ? 'Mark Not Ready' : 'Mark Ready'}
             </button>
+            {room.host_user_id === userId ? (
+              <button
+                type="button"
+                disabled={
+                  busy ||
+                  onlineGameBusy ||
+                  !onStartOnlineGame ||
+                  room.status === 'playing' ||
+                  players.length < 3
+                }
+                onClick={onStartOnlineGame}
+              >
+                Start Online Game
+              </button>
+            ) : null}
             <button type="button" disabled={busy} onClick={handleLeaveRoom}>
               Leave Room
             </button>
           </div>
+          {room.host_user_id === userId && players.length < 3 ? (
+            <p className="online-room-copy">
+              Need at least 3 players to start this game mode.
+            </p>
+          ) : null}
         </div>
       )}
 
