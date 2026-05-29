@@ -1,0 +1,79 @@
+:root {
+  --felt-dark: #103b2d;
+  --felt-mid: #1a5a44;
+  --felt-light: #2f7b61;
+  --panel: #f7f1dd;
+  --panel-border: #d8c8a0;
+  --ink: #1f1d19;
+  --subtle: #6f6758;
+  --chip-red: #cc3d35;
+  --chip-gold: #b4892f;
+  --focus: #274dff;
+
+  font-family: 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif;
+  line-height: 1.4;
+  color: var(--ink);
+  background: radial-gradient(circle at top, var(--felt-light), var(--felt-dark));
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+}
+
+#root {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 1px solid #3c372f;
+  background: #fff8e7;
+  color: #2a261f;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+button:hover:enabled {
+  background: #f2e2bc;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+input {
+  border: 1px solid #8d836e;
+  border-radius: 8px;
+  padding: 8px;
+  min-width: 120px;
+}
