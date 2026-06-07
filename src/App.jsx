@@ -527,6 +527,7 @@ function App() {
         handComplete={game.handComplete}
         revealByPlayerId={effectiveRevealByPlayerId}
         onToggleWordReveal={toggleWordReveal}
+        showWordControls={!isOnlinePlaying}
       />
 
       <section className="controls">

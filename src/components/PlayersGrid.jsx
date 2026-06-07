@@ -8,6 +8,7 @@ function PlayersGrid({
   handComplete,
   revealByPlayerId,
   onToggleWordReveal,
+  showWordControls = true,
 }) {
   return (
     <section className="players-grid">
@@ -36,7 +37,7 @@ function PlayersGrid({
               Word:{' '}
               {player.inHand ? (isWordVisible ? player.holeWord : '••••••') : '--'}
             </p>
-            {player.inHand && !forceWordVisible ? (
+            {showWordControls && player.inHand && !forceWordVisible ? (
               <button
                 type="button"
                 className="tiny"
