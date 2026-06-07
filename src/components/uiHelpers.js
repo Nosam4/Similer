@@ -3,12 +3,12 @@ export function summarizePlayerStatus(player, isActor) {
     return 'Out of chips'
   }
 
-  if (player.folded) {
-    return 'Folded'
-  }
-
   if (player.isJudge) {
     return 'Judge (inactive)'
+  }
+
+  if (player.folded) {
+    return 'Folded'
   }
 
   if (player.allIn) {

@@ -255,14 +255,26 @@ function isBettingRoundComplete(state) {
 }
 
 function chooseJudgeIndex(state) {
-  const eligibleJudgeIndexes = []
+  const activeContenderIndexes = []
+  const fallbackJudgeIndexes = []
 
   for (let index = 0; index < state.players.length; index += 1) {
     const player = state.players[index]
-    if (player.inHand && !player.folded) {
-      eligibleJudgeIndexes.push(index)
+    if (!player.inHand) {
+      continue
+    }
+
+    if (player.folded) {
+      fallbackJudgeIndexes.push(index)
+    } else {
+      activeContenderIndexes.push(index)
     }
   }
+
+  const eligibleJudgeIndexes =
+    activeContenderIndexes.length >= 3 || fallbackJudgeIndexes.length === 0
+      ? activeContenderIndexes
+      : fallbackJudgeIndexes
 
   if (eligibleJudgeIndexes.length === 0) {
     return null
@@ -289,7 +301,9 @@ function moveToShowdownVoting(state) {
 }
 
 function startPostflopJudgePhase(state) {
-  if (countRemainingContenders(state) <= 1) {
+  const remainingContenderCount = countRemainingContenders(state)
+
+  if (remainingContenderCount <= 1) {
     return settleUncontestedPot(state)
   }
 
