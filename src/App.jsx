@@ -133,6 +133,7 @@ function App() {
   const isDebate = game.phase === 'debate'
   const judgeWord = game.judgeWord ?? judge?.holeWord ?? null
   const isFinalDuel = game.showdownMode === 'similarityDuel'
+  const isNeutralVoting = game.showdownMode === 'neutralVoting'
   const onlineVotes = useMemo(() => getOnlineVotesForGame(game), [game])
 
   const similarityRows = useMemo(() => {
@@ -172,24 +173,25 @@ function App() {
         ? playerVotes
         : defaultPlayerVotes
   const effectiveJudgeVote =
-    isOnlinePlaying
-      ? onlineVotes.judgeVote
-      : judgeVote || (contenders.length > 0 ? String(contenders[0].id) : '')
+    judge
+      ? isOnlinePlaying
+        ? onlineVotes.judgeVote
+        : judgeVote || (contenders.length > 0 ? String(contenders[0].id) : '')
+      : ''
   const submittedPlayerVoteCount = contenders.filter((voter) => {
     const value = effectivePlayerVotes[voter.id]
     return value !== undefined && value !== ''
   }).length
-  const judgeVoteSubmitted = effectiveJudgeVote !== ''
+  const judgeVoteSubmitted = !judge || effectiveJudgeVote !== ''
 
   const canResolveVotes =
     isShowdownVoting &&
     contenders.length > 1 &&
-    judge &&
     contenders.every((voter) => {
       const value = effectivePlayerVotes[voter.id]
       return value !== undefined && value !== ''
     }) &&
-    effectiveJudgeVote !== ''
+    (!judge || effectiveJudgeVote !== '')
 
   const myOnlineSeatIndex = onlineSession?.myPlayer?.seat_index ?? null
   const roomId = onlineSession?.room?.id ?? null
@@ -332,7 +334,7 @@ function App() {
 
       const nextGame = withoutOnlineVotes(resolveShowdownVotes(game, {
         playerVotes: effectivePlayerVotes,
-        judgeVote: Number(effectiveJudgeVote),
+        judgeVote: judge ? Number(effectiveJudgeVote) : null,
       }))
       if (isOnlinePlaying) {
         setOnlineGameBusy(true)
@@ -610,6 +612,7 @@ function App() {
             judgeWord={judgeWord}
             contenders={contenders}
             isFinalDuel={isFinalDuel}
+            isNeutralVoting={isNeutralVoting}
             canCompleteDebate={canCompleteDebate}
             onCompleteDebate={completeDebate}
             onlineGameBusy={onlineGameBusy}
@@ -634,6 +637,7 @@ function App() {
             submittedPlayerVotes={onlineVotes.playerVotes}
             submittedPlayerVoteCount={submittedPlayerVoteCount}
             judgeVoteSubmitted={judgeVoteSubmitted}
+            usesJudgeVote={Boolean(judge)}
             onlineGameBusy={onlineGameBusy}
             onlinePlayerVoteValue={onlinePlayerVoteValue}
             setOnlinePlayerVoteValue={(nextValue) => {

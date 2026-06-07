@@ -203,6 +203,14 @@ function buildWinnerExplanation(resolution, winner) {
   return `${winner.name} had the strongest category result and wins.`
 }
 
+function buildNeutralVotingExplanation(resolution, winner) {
+  if (resolution.winnerReason === 'player-vote-and-similarity') {
+    return `${winner.name} wins by taking Player Vote and Similarity.`
+  }
+
+  return `Player Vote and Similarity split, so similarity breaks the tie in favor of ${winner.name}.`
+}
+
 function makeFreshPlayer(id, name, stack) {
   return {
     id,
@@ -262,6 +270,10 @@ function shouldUseFinalDuel(state) {
   return countRemainingContenders(state) === 2 && foldedJudgeCandidates.length === 0
 }
 
+function hasAllInContender(state) {
+  return getContenderList(state).some((player) => player.allIn)
+}
+
 function isBettingRoundComplete(state) {
   const contenders = getContenderList(state)
   const actionable = contenders.filter((player) => !player.allIn)
@@ -303,6 +315,25 @@ function chooseJudgeIndex(state) {
 
   const randomPick = Math.floor(Math.random() * eligibleJudgeIndexes.length)
   return eligibleJudgeIndexes[randomPick]
+}
+
+function chooseFoldedJudgeIndex(state) {
+  const foldedJudgeIndexes = []
+
+  for (let index = 0; index < state.players.length; index += 1) {
+    const player = state.players[index]
+
+    if (player.inHand && player.folded) {
+      foldedJudgeIndexes.push(index)
+    }
+  }
+
+  if (foldedJudgeIndexes.length === 0) {
+    return null
+  }
+
+  const randomPick = Math.floor(Math.random() * foldedJudgeIndexes.length)
+  return foldedJudgeIndexes[randomPick]
 }
 
 function resolveSimilarityDuel(state) {
@@ -401,11 +432,21 @@ function moveToShowdownVoting(state) {
       return resolveSimilarityDuel(state)
     }
 
-    throw new Error('Cannot begin showdown voting without an assigned judge.')
+    if (state.showdownMode !== 'neutralVoting') {
+      throw new Error('Cannot begin showdown voting without an assigned judge.')
+    }
   }
 
   state.phase = 'showdownVoting'
   state.currentPlayerIndex = null
+
+  if (!judge) {
+    addLog(
+      state,
+      'Showdown voting begins with a neutral judge word. Contenders submit player votes; similarity breaks any split.',
+    )
+    return state
+  }
 
   addLog(
     state,
@@ -428,6 +469,11 @@ function moveToDebateStage(state) {
       state,
       `Debate stage begins. Final Duel words are revealed against neutral judge word "${state.judgeWord}". Similarity will decide the winner after arguments.`,
     )
+  } else if (state.showdownMode === 'neutralVoting') {
+    addLog(
+      state,
+      `Debate stage begins. Neutral judge word "${state.judgeWord}" is live because all-in contenders are protected. Player Vote and Similarity will decide the winner.`,
+    )
   } else {
     addLog(
       state,
@@ -438,18 +484,25 @@ function moveToDebateStage(state) {
   return state
 }
 
-function startFinalDuelJudgePhase(state) {
+function startNeutralJudgePhase(state, showdownMode) {
   state.judgePlayerId = null
   state.judgeWord = drawNeutralJudgeWord(state)
-  state.showdownMode = 'similarityDuel'
+  state.showdownMode = showdownMode
   state.phase = 'postflop'
 
   resetBettingRound(state)
 
-  addLog(
-    state,
-    `Final Duel begins. Neutral judge word: "${state.judgeWord}". Both players stay active; no judge vote will be used.`,
-  )
+  if (showdownMode === 'similarityDuel') {
+    addLog(
+      state,
+      `Final Duel begins. Neutral judge word: "${state.judgeWord}". Both players stay active; no judge vote will be used.`,
+    )
+  } else {
+    addLog(
+      state,
+      `All-in protection uses neutral judge word "${state.judgeWord}". All contenders stay eligible; no judge vote will be used.`,
+    )
+  }
 
   state.currentPlayerIndex = findNextActionableIndex(state, state.dealerIndex)
 
@@ -467,8 +520,23 @@ function startPostflopJudgePhase(state) {
     return settleUncontestedPot(state)
   }
 
+  if (hasAllInContender(state)) {
+    const foldedJudgeIndex = chooseFoldedJudgeIndex(state)
+
+    if (foldedJudgeIndex !== null) {
+      return startPlayerJudgePhase(
+        state,
+        foldedJudgeIndex,
+        'All-in protection selects a folded player as judge so all-in contenders stay eligible.',
+      )
+    }
+
+    const neutralMode = remainingContenderCount === 2 ? 'similarityDuel' : 'neutralVoting'
+    return startNeutralJudgePhase(state, neutralMode)
+  }
+
   if (shouldUseFinalDuel(state)) {
-    return startFinalDuelJudgePhase(state)
+    return startNeutralJudgePhase(state, 'similarityDuel')
   }
 
   const judgeIndex = chooseJudgeIndex(state)
@@ -477,6 +545,10 @@ function startPostflopJudgePhase(state) {
     throw new Error('Unable to choose a judge for this hand.')
   }
 
+  return startPlayerJudgePhase(state, judgeIndex)
+}
+
+function startPlayerJudgePhase(state, judgeIndex, reason = null) {
   const judge = state.players[judgeIndex]
   judge.isJudge = true
   judge.hasActedThisStreet = true
@@ -492,6 +564,9 @@ function startPostflopJudgePhase(state) {
     state,
     `${judge.name} becomes the judge. Judge word: "${state.judgeWord}". Judge contributions stay at risk and judge does not act in postflop betting.`,
   )
+  if (reason) {
+    addLog(state, reason)
+  }
 
   if (countRemainingContenders(state) <= 1) {
     return settleUncontestedPot(state)
@@ -1002,6 +1077,66 @@ function buildVotingResolution(state, playerVotes, judgeVote) {
   }
 }
 
+function buildNeutralVotingResolution(state, playerVotes) {
+  const contenders = getContenderList(state)
+  const contenderIds = contenders.map((player) => player.id)
+  const contenderIdSet = new Set(contenderIds)
+
+  const voteCountByPlayerId = new Map(contenderIds.map((id) => [id, 0]))
+
+  for (const voter of contenders) {
+    const voteTargetId = Number(playerVotes[voter.id])
+
+    if (!contenderIdSet.has(voteTargetId)) {
+      throw new Error(`Invalid vote target selected by ${voter.name}.`)
+    }
+
+    voteCountByPlayerId.set(voteTargetId, (voteCountByPlayerId.get(voteTargetId) ?? 0) + 1)
+  }
+
+  const similarityByPlayerId = new Map()
+
+  for (const contender of contenders) {
+    similarityByPlayerId.set(
+      contender.id,
+      getSimilarityScore(contender.holeWord, state.judgeWord),
+    )
+  }
+
+  const playerVoteWinner = rankContenderIdsBy(state, contenderIds, (playerId) => {
+    const votes = voteCountByPlayerId.get(playerId) ?? 0
+    const similarity = similarityByPlayerId.get(playerId) ?? Number.NEGATIVE_INFINITY
+    return votes * 1000 + similarity
+  })[0]
+
+  const similarityWinner = rankContenderIdsBy(state, contenderIds, (playerId) => {
+    const similarity = similarityByPlayerId.get(playerId) ?? Number.NEGATIVE_INFINITY
+    const votes = voteCountByPlayerId.get(playerId) ?? 0
+    return similarity * 1000 + votes
+  })[0]
+
+  const categoryWinsByPlayerId = new Map(contenderIds.map((id) => [id, []]))
+  categoryWinsByPlayerId.get(playerVoteWinner).push('playerVote')
+  categoryWinsByPlayerId.get(similarityWinner).push('similarity')
+
+  const winnerId = similarityWinner
+  const winnerReason =
+    playerVoteWinner === similarityWinner
+      ? 'player-vote-and-similarity'
+      : 'neutral-split-similarity-tiebreak'
+
+  return {
+    contenders,
+    winnerId,
+    winnerReason,
+    playerVoteWinner,
+    similarityWinner,
+    voteCountByPlayerId,
+    similarityByPlayerId,
+    categoryWinsByPlayerId,
+  }
+}
+
 function getJudgePlayerFromState(state) {
   if (state.judgePlayerId === null) {
     return null
@@ -1093,6 +1228,75 @@ export function completeDebateStage(previousState) {
   return moveToShowdownVoting(state)
 }
 
+function resolveNeutralVoting(previousState, playerVotes) {
+  const state = previousState
+
+  if (state.showdownMode !== 'neutralVoting') {
+    throw new Error('Neutral voting can only resolve a neutral judge showdown.')
+  }
+
+  if (!state.judgeWord) {
+    throw new Error('Cannot resolve neutral voting without a neutral judge word.')
+  }
+
+  const resolution = buildNeutralVotingResolution(state, playerVotes)
+  const winner = state.players.find((player) => player.id === resolution.winnerId)
+
+  if (!winner) {
+    throw new Error('Unable to find neutral showdown winner.')
+  }
+
+  const totalPot = getPotTotal(state)
+  winner.stack += totalPot
+
+  state.showdown = {
+    type: 'neutralVoting',
+    judgeWord: state.judgeWord,
+    contenders: resolution.contenders.map((player) => {
+      return {
+        playerId: player.id,
+        playerName: player.name,
+        word: player.holeWord,
+        playerVotesReceived: resolution.voteCountByPlayerId.get(player.id) ?? 0,
+        similarity: resolution.similarityByPlayerId.get(player.id),
+        categoryWins: resolution.categoryWinsByPlayerId.get(player.id),
+      }
+    }),
+    categories: {
+      playerVoteWinnerId: resolution.playerVoteWinner,
+      similarityWinnerId: resolution.similarityWinner,
+    },
+    winner: {
+      playerId: winner.id,
+      playerName: winner.name,
+      word: winner.holeWord,
+      reason: resolution.winnerReason,
+      categoryWins: resolution.categoryWinsByPlayerId.get(winner.id),
+      payout: totalPot,
+    },
+    payouts: [
+      {
+        playerId: winner.id,
+        playerName: winner.name,
+        amount: totalPot,
+      },
+    ],
+  }
+
+  addLog(
+    state,
+    `Category winners -> Player Vote: ${state.players.find((player) => player.id === resolution.playerVoteWinner).name}, Similarity: ${state.players.find((player) => player.id === resolution.similarityWinner).name}.`,
+  )
+  addLog(state, `Winner logic -> ${buildNeutralVotingExplanation(resolution, winner)}`)
+  addLog(state, `${winner.name} wins the hand for ${totalPot}.`)
+
+  state.handComplete = true
+  state.phase = 'handComplete'
+  state.currentPlayerIndex = null
+
+  return state
+}
+
 export function resolveShowdownVotes(previousState, payload) {
   const state = deepClone(previousState)
 
@@ -1100,13 +1304,17 @@ export function resolveShowdownVotes(previousState, payload) {
     throw new Error('Showdown votes can only be resolved during showdown voting phase.')
   }
 
+  const { playerVotes = {}, judgeVote } = payload ?? {}
+
   const judge = getJudgePlayerFromState(state)
 
   if (!judge) {
+    if (state.showdownMode === 'neutralVoting') {
+      return resolveNeutralVoting(state, playerVotes)
+    }
+
     throw new Error('Cannot resolve votes without an assigned judge.')
   }
-
-  const { playerVotes = {}, judgeVote } = payload ?? {}
 
   const resolution = buildVotingResolution(state, playerVotes, judgeVote)
 

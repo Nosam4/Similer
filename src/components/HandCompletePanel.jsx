@@ -82,6 +82,42 @@ function HandCompletePanel({
         </div>
       ) : null}
 
+      {game.showdown?.type === 'neutralVoting' ? (
+        <div className="showdown-grid">
+          <p key={`winner-line-${winnerPulseTick}`} className={winnerLineClassName}>
+            Winner: {game.showdown.winner.playerName} ({game.showdown.winner.word})
+          </p>
+          <p>
+            Neutral Judge Word: <b>{game.showdown.judgeWord}</b>
+          </p>
+          <p>
+            Category winners: Player Vote ={' '}
+            {
+              game.players.find(
+                (player) => player.id === game.showdown.categories.playerVoteWinnerId,
+              )?.name
+            }
+            , Similarity ={' '}
+            {
+              game.players.find(
+                (player) => player.id === game.showdown.categories.similarityWinnerId,
+              )?.name
+            }
+          </p>
+          {game.showdown.contenders.map((contender) => (
+            <p key={contender.playerId}>
+              {contender.playerName} ({contender.word}) | Votes:{' '}
+              {contender.playerVotesReceived} | Similarity:{' '}
+              {formatScore(contender.similarity)} | Categories:{' '}
+              {contender.categoryWins.join(', ') || 'none'}
+            </p>
+          ))}
+          {game.showdown.payouts.map((payout) => (
+            <p key={payout.playerId}>Payout: {payout.playerName} +{payout.amount}</p>
+          ))}
+        </div>
+      ) : null}
+
       <button type="button" onClick={onBeginNextHand}>
         Start Next Hand
       </button>

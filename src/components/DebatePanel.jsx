@@ -3,13 +3,18 @@ function DebatePanel({
   judgeWord,
   contenders,
   isFinalDuel = false,
+  isNeutralVoting = false,
   canCompleteDebate = true,
   onCompleteDebate,
   onlineGameBusy = false,
   pulseTick = 0,
 }) {
   const judgeLabel = judge ? `${judge.name}'s word` : 'Neutral judge word'
-  const buttonLabel = isFinalDuel ? 'Reveal Similarity Winner' : 'Begin Showdown Voting'
+  const buttonLabel = isFinalDuel
+    ? 'Reveal Similarity Winner'
+    : isNeutralVoting
+      ? 'Begin Player Voting'
+      : 'Begin Showdown Voting'
 
   return (
     <div
@@ -24,6 +29,11 @@ function DebatePanel({
         <p>
           Final Duel: both players stay active, no judge vote is used, and
           similarity decides the winner after arguments.
+        </p>
+      ) : isNeutralVoting ? (
+        <p>
+          All-in protection is active: no contender becomes the judge. Player
+          Vote and Similarity decide the winner after arguments.
         </p>
       ) : (
         <p>

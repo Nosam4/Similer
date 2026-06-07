@@ -18,6 +18,7 @@ function ShowdownVotingPanel({
   submittedPlayerVotes = {},
   submittedPlayerVoteCount = 0,
   judgeVoteSubmitted = false,
+  usesJudgeVote = true,
   onlineGameBusy = false,
   onlinePlayerVoteValue = '',
   setOnlinePlayerVoteValue = null,
@@ -39,10 +40,17 @@ function ShowdownVotingPanel({
         className={`showdown-voting-panel${pulseTick > 0 ? ' stage-pulse stage-pulse-strong' : ''}`}
       >
         <h3>Showdown Voting</h3>
-        <p>
-          Judge word is <b>{displayJudgeWord}</b>. Each active contender submits
-          their own player vote, and the judge submits the judge vote.
-        </p>
+        {usesJudgeVote ? (
+          <p>
+            Judge word is <b>{displayJudgeWord}</b>. Each active contender submits
+            their own player vote, and the judge submits the judge vote.
+          </p>
+        ) : (
+          <p>
+            Neutral judge word is <b>{displayJudgeWord}</b>. Each active
+            contender submits a player vote; similarity breaks any split.
+          </p>
+        )}
 
         <div className="votes-grid">
           {myContender ? (
@@ -72,7 +80,7 @@ function ShowdownVotingPanel({
             <p>Only active contenders submit player votes.</p>
           )}
 
-          {isJudge ? (
+          {usesJudgeVote && isJudge ? (
             <label>
               Your judge vote
               <select
@@ -95,8 +103,10 @@ function ShowdownVotingPanel({
                 {judgeVoteSubmitted ? 'Update Judge Vote' : 'Submit Judge Vote'}
               </button>
             </label>
-          ) : (
+          ) : usesJudgeVote ? (
             <p>Waiting for {judge?.name} to submit the judge vote.</p>
+          ) : (
+            <p>No judge vote this hand. Player Vote and Similarity decide it.</p>
           )}
         </div>
 
@@ -112,9 +122,13 @@ function ShowdownVotingPanel({
                 : 'Pending'}
             </p>
           ))}
-          <p>
-            Judge vote ({judge?.name}): {judgeVoteSubmitted ? 'Submitted' : 'Pending'}
-          </p>
+          {usesJudgeVote ? (
+            <p>
+              Judge vote ({judge?.name}): {judgeVoteSubmitted ? 'Submitted' : 'Pending'}
+            </p>
+          ) : (
+            <p>Judge vote: Not used</p>
+          )}
         </div>
 
         <button
@@ -134,10 +148,17 @@ function ShowdownVotingPanel({
       className={`showdown-voting-panel${pulseTick > 0 ? ' stage-pulse stage-pulse-strong' : ''}`}
     >
       <h3>Showdown Voting</h3>
-      <p>
-        Judge word is <b>{displayJudgeWord}</b>. Submit every player vote plus the
-        judge vote to resolve winner.
-      </p>
+      {usesJudgeVote ? (
+        <p>
+          Judge word is <b>{displayJudgeWord}</b>. Submit every player vote plus the
+          judge vote to resolve winner.
+        </p>
+      ) : (
+        <p>
+          Neutral judge word is <b>{displayJudgeWord}</b>. Submit every player
+          vote; similarity breaks any split.
+        </p>
+      )}
 
       <div className="votes-grid">
         {contenders.map((voter) => (
@@ -162,19 +183,23 @@ function ShowdownVotingPanel({
           </label>
         ))}
 
-        <label>
-          Judge vote ({judge?.name})
-          <select
-            value={effectiveJudgeVote}
-            onChange={(event) => setJudgeVote(event.target.value)}
-          >
-            {contenders.map((target) => (
-              <option key={target.id} value={target.id}>
-                {target.name} ({target.holeWord})
-              </option>
-            ))}
-          </select>
-        </label>
+        {usesJudgeVote ? (
+          <label>
+            Judge vote ({judge?.name})
+            <select
+              value={effectiveJudgeVote}
+              onChange={(event) => setJudgeVote(event.target.value)}
+            >
+              {contenders.map((target) => (
+                <option key={target.id} value={target.id}>
+                  {target.name} ({target.holeWord})
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <p>No judge vote this hand.</p>
+        )}
       </div>
 
       <div className="showdown-grid">
