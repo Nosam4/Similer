@@ -29,6 +29,7 @@ function OnlineRoomPanel({
   const [busy, setBusy] = useState(false)
   const [errorText, setErrorText] = useState('')
   const [booting, setBooting] = useState(isSupabaseConfigured)
+  const [refreshTick, setRefreshTick] = useState(0)
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -72,7 +73,7 @@ function OnlineRoomPanel({
 
     let isMounted = true
 
-    async function refreshRoomState() {
+    async function refreshRoomState({ silent = false } = {}) {
       try {
         const [nextRoom, nextPlayers, nextRoomState] = await Promise.all([
           fetchRoom(room.id),
@@ -81,6 +82,13 @@ function OnlineRoomPanel({
         ])
 
         if (!isMounted) {
+          return
+        }
+
+        if (!nextRoom) {
+          setRoom(null)
+          setPlayers([])
+          setRoomState(null)
           return
         }
 
@@ -93,7 +101,9 @@ function OnlineRoomPanel({
           return
         }
 
-        setErrorText(error instanceof Error ? error.message : 'Failed to refresh room data.')
+        if (!silent) {
+          setErrorText(error instanceof Error ? error.message : 'Failed to refresh room data.')
+        }
       }
     }
 
@@ -101,14 +111,29 @@ function OnlineRoomPanel({
       roomId: room.id,
       onAnyChange: refreshRoomState,
     })
+    const intervalId = window.setInterval(() => {
+      refreshRoomState({ silent: true })
+    }, 2500)
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === 'visible') {
+        refreshRoomState({ silent: true })
+      }
+    }
+
+    window.addEventListener('focus', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
 
     refreshRoomState()
 
     return () => {
       isMounted = false
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
       unsubscribe()
     }
-  }, [room?.id])
+  }, [room?.id, refreshTick])
 
   const myPlayer = useMemo(() => {
     if (!userId) {
@@ -318,6 +343,13 @@ function OnlineRoomPanel({
                 Start Online Game
               </button>
             ) : null}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setRefreshTick((previous) => previous + 1)}
+            >
+              Refresh Room
+            </button>
             <button type="button" disabled={busy} onClick={handleLeaveRoom}>
               Leave Room
             </button>
