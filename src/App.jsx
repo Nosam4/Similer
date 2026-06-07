@@ -55,6 +55,42 @@ function getOnlinePlayerNames(players) {
   return names.length >= 3 ? names : PLAYER_NAMES
 }
 
+function getOnlineVotesForGame(game) {
+  const onlineVotes = game.onlineVotes
+
+  if (!onlineVotes || onlineVotes.handNumber !== game.handNumber) {
+    return {
+      playerVotes: {},
+      judgeVote: '',
+    }
+  }
+
+  return {
+    playerVotes:
+      onlineVotes.playerVotes && typeof onlineVotes.playerVotes === 'object'
+        ? onlineVotes.playerVotes
+        : {},
+    judgeVote: onlineVotes.judgeVote ? String(onlineVotes.judgeVote) : '',
+  }
+}
+
+function withOnlineVotes(game, onlineVotes) {
+  return {
+    ...game,
+    onlineVotes: {
+      handNumber: game.handNumber,
+      playerVotes: onlineVotes.playerVotes,
+      judgeVote: onlineVotes.judgeVote,
+    },
+  }
+}
+
+function withoutOnlineVotes(game) {
+  const nextGame = { ...game }
+  delete nextGame.onlineVotes
+  return nextGame
+}
+
 function App() {
   const [localGame, setLocalGame] = useState(() => {
     return createInitialGame({
@@ -89,6 +125,7 @@ function App() {
   const contenders = getContenders(game)
 
   const isShowdownVoting = game.phase === 'showdownVoting'
+  const onlineVotes = useMemo(() => getOnlineVotesForGame(game), [game])
 
   const similarityRows = useMemo(() => {
     if (!judge || !isShowdownVoting) {
@@ -121,9 +158,20 @@ function App() {
   }, [contenders, isShowdownVoting])
 
   const effectivePlayerVotes =
-    Object.keys(playerVotes).length > 0 ? playerVotes : defaultPlayerVotes
+    isOnlinePlaying
+      ? onlineVotes.playerVotes
+      : Object.keys(playerVotes).length > 0
+        ? playerVotes
+        : defaultPlayerVotes
   const effectiveJudgeVote =
-    judgeVote || (contenders.length > 0 ? String(contenders[0].id) : '')
+    isOnlinePlaying
+      ? onlineVotes.judgeVote
+      : judgeVote || (contenders.length > 0 ? String(contenders[0].id) : '')
+  const submittedPlayerVoteCount = contenders.filter((voter) => {
+    const value = effectivePlayerVotes[voter.id]
+    return value !== undefined && value !== ''
+  }).length
+  const judgeVoteSubmitted = effectiveJudgeVote !== ''
 
   const canResolveVotes =
     isShowdownVoting &&
@@ -245,7 +293,7 @@ function App() {
   }
 
   async function beginNextHand() {
-    const nextGame = startNextHand(game)
+    const nextGame = withoutOnlineVotes(startNextHand(game))
     try {
       if (isOnlinePlaying) {
         setOnlineGameBusy(true)
@@ -267,10 +315,15 @@ function App() {
 
   async function resolveVotes() {
     try {
-      const nextGame = resolveShowdownVotes(game, {
+      if (isOnlinePlaying && !canResolveVotes) {
+        setErrorText('Waiting for all showdown votes.')
+        return
+      }
+
+      const nextGame = withoutOnlineVotes(resolveShowdownVotes(game, {
         playerVotes: effectivePlayerVotes,
         judgeVote: Number(effectiveJudgeVote),
-      })
+      }))
       if (isOnlinePlaying) {
         setOnlineGameBusy(true)
         await persistOnlineGame(nextGame)
@@ -280,6 +333,72 @@ function App() {
       setErrorText('')
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Vote resolution failed.')
+    } finally {
+      setOnlineGameBusy(false)
+    }
+  }
+
+  async function submitOnlinePlayerVote() {
+    const selectedVote = onlinePlayerVoteValue
+    const voterId = myOnlineSeatIndex
+    const targetId = Number(selectedVote)
+
+    if (!isOnlinePlaying || !isShowdownVoting || voterId === null) {
+      return
+    }
+
+    if (!contenders.some((player) => player.id === voterId)) {
+      setErrorText('Only active contenders submit player votes.')
+      return
+    }
+
+    if (!contenders.some((player) => player.id === targetId)) {
+      setErrorText('Choose a valid player vote before submitting.')
+      return
+    }
+
+    try {
+      setOnlineGameBusy(true)
+      const nextVotes = {
+        playerVotes: {
+          ...onlineVotes.playerVotes,
+          [voterId]: String(targetId),
+        },
+        judgeVote: onlineVotes.judgeVote,
+      }
+
+      await persistOnlineGame(withOnlineVotes(game, nextVotes))
+      setErrorText('')
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Unable to submit player vote.')
+    } finally {
+      setOnlineGameBusy(false)
+    }
+  }
+
+  async function submitOnlineJudgeVote() {
+    const targetId = Number(onlineJudgeVoteValue)
+
+    if (!isOnlinePlaying || !isShowdownVoting || judge?.id !== myOnlineSeatIndex) {
+      return
+    }
+
+    if (!contenders.some((player) => player.id === targetId)) {
+      setErrorText('Choose a valid judge vote before submitting.')
+      return
+    }
+
+    try {
+      setOnlineGameBusy(true)
+      const nextVotes = {
+        playerVotes: onlineVotes.playerVotes,
+        judgeVote: String(targetId),
+      }
+
+      await persistOnlineGame(withOnlineVotes(game, nextVotes))
+      setErrorText('')
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Unable to submit judge vote.')
     } finally {
       setOnlineGameBusy(false)
     }
@@ -351,6 +470,9 @@ function App() {
   }
 
   const isMyTurnOnline = isOnlinePlaying && actor && actor.id === myOnlineSeatIndex
+  const onlinePlayerVoteValue =
+    playerVotes[myOnlineSeatIndex] ?? onlineVotes.playerVotes[myOnlineSeatIndex] ?? ''
+  const onlineJudgeVoteValue = judgeVote || onlineVotes.judgeVote || ''
   const effectiveRevealByPlayerId = useMemo(() => {
     if (!isOnlinePlaying || myOnlineSeatIndex === null) {
       return revealByPlayerId
@@ -434,6 +556,23 @@ function App() {
             canResolveVotes={canResolveVotes}
             onResolveVotes={resolveVotes}
             pulseTick={pulseTicks.showdownPanel}
+            isOnlinePlaying={isOnlinePlaying}
+            myPlayerId={myOnlineSeatIndex}
+            submittedPlayerVotes={onlineVotes.playerVotes}
+            submittedPlayerVoteCount={submittedPlayerVoteCount}
+            judgeVoteSubmitted={judgeVoteSubmitted}
+            onlineGameBusy={onlineGameBusy}
+            onlinePlayerVoteValue={onlinePlayerVoteValue}
+            setOnlinePlayerVoteValue={(nextValue) => {
+              setPlayerVotes((previous) => ({
+                ...previous,
+                [myOnlineSeatIndex]: nextValue,
+              }))
+            }}
+            onSubmitOnlinePlayerVote={submitOnlinePlayerVote}
+            onlineJudgeVoteValue={onlineJudgeVoteValue}
+            setOnlineJudgeVoteValue={setJudgeVote}
+            onSubmitOnlineJudgeVote={submitOnlineJudgeVote}
           />
         ) : (
           <TurnPanel
