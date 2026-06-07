@@ -1,4 +1,4 @@
-function JudgeRow({ judge, pulseTick = 0 }) {
+function JudgeRow({ judge, judgeWord = null, pulseTick = 0 }) {
   return (
     <section
       key={`judge-row-${pulseTick}`}
@@ -8,6 +8,10 @@ function JudgeRow({ judge, pulseTick = 0 }) {
       {judge ? (
         <span>
           {judge.name} | Word: <b>{judge.holeWord}</b>
+        </span>
+      ) : judgeWord ? (
+        <span>
+          Neutral Judge Word: <b>{judgeWord}</b>
         </span>
       ) : (
         <span>Judge not assigned yet (revealed after preflop).</span>

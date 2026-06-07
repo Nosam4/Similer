@@ -16,7 +16,7 @@ function PlayersGrid({
         const isDealer = dealerIndex === index
         const isActor = currentPlayerIndex === index
         const forceWordVisible =
-          player.isJudge || phase === 'showdownVoting' || handComplete
+          player.isJudge || phase === 'debate' || phase === 'showdownVoting' || handComplete
         const isWordVisible = forceWordVisible || revealByPlayerId[player.id]
 
         return (

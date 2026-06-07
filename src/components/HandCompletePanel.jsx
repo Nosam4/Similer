@@ -60,6 +60,28 @@ function HandCompletePanel({
         </div>
       ) : null}
 
+      {game.showdown?.type === 'similarityDuel' ? (
+        <div className="showdown-grid">
+          <p key={`winner-line-${winnerPulseTick}`} className={winnerLineClassName}>
+            Final Duel Winner: {game.showdown.winner.playerName} (
+            {game.showdown.winner.word})
+          </p>
+          <p>
+            Neutral Judge Word: <b>{game.showdown.judgeWord}</b>
+          </p>
+          <p>Winner logic: similarity score decides the two-player showdown.</p>
+          {game.showdown.contenders.map((contender) => (
+            <p key={contender.playerId}>
+              {contender.playerName} ({contender.word}) | Similarity:{' '}
+              {formatScore(contender.similarity)}
+            </p>
+          ))}
+          {game.showdown.payouts.map((payout) => (
+            <p key={payout.playerId}>Payout: {payout.playerName} +{payout.amount}</p>
+          ))}
+        </div>
+      ) : null}
+
       <button type="button" onClick={onBeginNextHand}>
         Start Next Hand
       </button>

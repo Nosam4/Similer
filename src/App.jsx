@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
   applyPlayerAction,
+  completeDebateStage,
   createInitialGame,
   getContenders,
   getCurrentActor,
@@ -17,6 +18,7 @@ import {
 import ActionLogPanel from './components/ActionLogPanel'
 import BustedPanel from './components/BustedPanel'
 import ConfettiComponent from './components/ConfettiComponent'
+import DebatePanel from './components/DebatePanel'
 import HandCompletePanel from './components/HandCompletePanel'
 import JudgeRow from './components/JudgeRow'
 import OnlineRoomPanel from './components/OnlineRoomPanel'
@@ -33,6 +35,7 @@ const INITIAL_PULSE_TICKS = {
   phaseTile: 0,
   judgeRow: 0,
   showdownPanel: 0,
+  debatePanel: 0,
   turnPanel: 0,
   handPanel: 0,
   winnerLine: 0,
@@ -127,10 +130,13 @@ function App() {
   const contenders = getContenders(game)
 
   const isShowdownVoting = game.phase === 'showdownVoting'
+  const isDebate = game.phase === 'debate'
+  const judgeWord = game.judgeWord ?? judge?.holeWord ?? null
+  const isFinalDuel = game.showdownMode === 'similarityDuel'
   const onlineVotes = useMemo(() => getOnlineVotesForGame(game), [game])
 
   const similarityRows = useMemo(() => {
-    if (!judge || !isShowdownVoting) {
+    if (!judgeWord || !isShowdownVoting) {
       return []
     }
 
@@ -139,10 +145,10 @@ function App() {
         playerId: player.id,
         playerName: player.name,
         playerWord: player.holeWord,
-        similarity: getSimilarityForWords(player.holeWord, judge.holeWord),
+        similarity: getSimilarityForWords(player.holeWord, judgeWord),
       }
     })
-  }, [contenders, isShowdownVoting, judge])
+  }, [contenders, isShowdownVoting, judgeWord])
 
   const defaultPlayerVotes = useMemo(() => {
     if (!isShowdownVoting || contenders.length === 0) {
@@ -255,6 +261,8 @@ function App() {
         next.turnPanel += 1
       } else if (game.phase === 'postflop') {
         next.judgeRow += 1
+      } else if (game.phase === 'debate') {
+        next.debatePanel += 1
       } else if (game.phase === 'showdownVoting') {
         next.showdownPanel += 1
       } else if (game.phase === 'handComplete') {
@@ -335,6 +343,25 @@ function App() {
       setErrorText('')
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Vote resolution failed.')
+    } finally {
+      setOnlineGameBusy(false)
+    }
+  }
+
+  async function completeDebate() {
+    try {
+      const nextGame = withoutOnlineVotes(completeDebateStage(game))
+      if (isOnlinePlaying) {
+        setOnlineGameBusy(true)
+        await persistOnlineGame(nextGame)
+      } else {
+        setLocalGame(nextGame)
+      }
+      setErrorText('')
+      setPlayerVotes({})
+      setJudgeVote('')
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not complete debate.')
     } finally {
       setOnlineGameBusy(false)
     }
@@ -481,6 +508,10 @@ function App() {
       myOnlinePlayer.stack <= 0 &&
       !myOnlinePlayer.inHand,
   )
+  const canCompleteDebate =
+    !isOnlinePlaying ||
+    contenders.some((player) => player.id === myOnlineSeatIndex) ||
+    judge?.id === myOnlineSeatIndex
   const isMyTurnOnline = isOnlinePlaying && actor && actor.id === myOnlineSeatIndex
   const onlinePlayerVoteValue =
     playerVotes[myOnlineSeatIndex] ?? onlineVotes.playerVotes[myOnlineSeatIndex] ?? ''
@@ -507,7 +538,7 @@ function App() {
   const shouldHideTurnWaitError =
     errorText === TURN_WAIT_ERROR &&
     isOnlinePlaying &&
-    (isMyTurnOnline || isBustedOnline || isShowdownVoting || game.handComplete)
+    (isMyTurnOnline || isBustedOnline || isDebate || isShowdownVoting || game.handComplete)
   const visibleErrorText =
     shouldHideTurnWaitError ? '' : errorText
 
@@ -544,7 +575,7 @@ function App() {
         phasePulseTick={pulseTicks.phaseTile}
       />
 
-      <JudgeRow judge={judge} pulseTick={pulseTicks.judgeRow} />
+      <JudgeRow judge={judge} judgeWord={judgeWord} pulseTick={pulseTicks.judgeRow} />
 
       <PlayersGrid
         players={game.players}
@@ -573,9 +604,21 @@ function App() {
             pulseTick={pulseTicks.handPanel}
             winnerPulseTick={pulseTicks.winnerLine}
           />
+        ) : isDebate ? (
+          <DebatePanel
+            judge={judge}
+            judgeWord={judgeWord}
+            contenders={contenders}
+            isFinalDuel={isFinalDuel}
+            canCompleteDebate={canCompleteDebate}
+            onCompleteDebate={completeDebate}
+            onlineGameBusy={onlineGameBusy}
+            pulseTick={pulseTicks.debatePanel}
+          />
         ) : isShowdownVoting ? (
           <ShowdownVotingPanel
             judge={judge}
+            judgeWord={judgeWord}
             contenders={contenders}
             defaultPlayerVotes={defaultPlayerVotes}
             effectivePlayerVotes={effectivePlayerVotes}

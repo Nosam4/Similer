@@ -3,6 +3,7 @@ import matrixData from './matrix.json'
 const PHASE_LABELS = {
   preflop: 'Preflop',
   postflop: 'Postflop (Judge Word Live)',
+  debate: 'Debate Stage',
   showdownVoting: 'Showdown Voting',
   handComplete: 'Hand Complete',
 }
@@ -144,6 +145,20 @@ function getSimilarityScore(playerWord, judgeWord) {
   return SCORES[playerWordIndex]?.[judgeWordIndex] ?? Number.NEGATIVE_INFINITY
 }
 
+function formatLogScore(score) {
+  return Number.isFinite(score) ? score.toFixed(2) : '--'
+}
+
+function drawNeutralJudgeWord(state, rng = Math.random) {
+  const usedWords = new Set(
+    state.players.map((player) => player.holeWord).filter((word) => word),
+  )
+  const availableWords = WORDS.filter((word) => !usedWords.has(word))
+  const pool = availableWords.length > 0 ? availableWords : WORDS
+
+  return pool[Math.floor(rng() * pool.length)]
+}
+
 function toCategoryLabel(categoryKey) {
   return CATEGORY_LABELS[categoryKey] ?? categoryKey
 }
@@ -241,6 +256,12 @@ function settleUncontestedPot(state) {
   return state
 }
 
+function shouldUseFinalDuel(state) {
+  const foldedJudgeCandidates = state.players.filter((player) => player.inHand && player.folded)
+
+  return countRemainingContenders(state) === 2 && foldedJudgeCandidates.length === 0
+}
+
 function isBettingRoundComplete(state) {
   const contenders = getContenderList(state)
   const actionable = contenders.filter((player) => !player.allIn)
@@ -284,9 +305,103 @@ function chooseJudgeIndex(state) {
   return eligibleJudgeIndexes[randomPick]
 }
 
+function resolveSimilarityDuel(state) {
+  if (countRemainingContenders(state) <= 1) {
+    return settleUncontestedPot(state)
+  }
+
+  if (!state.judgeWord) {
+    throw new Error('Cannot resolve Final Duel without a neutral judge word.')
+  }
+
+  const contenders = getContenderList(state)
+  const contenderIds = contenders.map((player) => player.id)
+  const similarityByPlayerId = new Map()
+
+  for (const contender of contenders) {
+    similarityByPlayerId.set(
+      contender.id,
+      getSimilarityScore(contender.holeWord, state.judgeWord),
+    )
+  }
+
+  const winnerId = rankContenderIdsBy(state, contenderIds, (playerId) => {
+    return similarityByPlayerId.get(playerId) ?? Number.NEGATIVE_INFINITY
+  })[0]
+  const winner = state.players.find((player) => player.id === winnerId)
+
+  if (!winner) {
+    throw new Error('Unable to find final duel winner.')
+  }
+
+  const potAmount = getPotTotal(state)
+  winner.stack += potAmount
+
+  state.showdown = {
+    type: 'similarityDuel',
+    judgeWord: state.judgeWord,
+    contenders: contenders.map((player) => {
+      return {
+        playerId: player.id,
+        playerName: player.name,
+        word: player.holeWord,
+        similarity: similarityByPlayerId.get(player.id),
+      }
+    }),
+    categories: {
+      similarityWinnerId: winner.id,
+    },
+    winner: {
+      playerId: winner.id,
+      playerName: winner.name,
+      word: winner.holeWord,
+      reason: 'similarity-duel',
+      payout: potAmount,
+    },
+    payouts: [
+      {
+        playerId: winner.id,
+        playerName: winner.name,
+        amount: potAmount,
+      },
+    ],
+  }
+
+  addLog(
+    state,
+    `Final Duel similarity -> ${contenders
+      .map((player) => {
+        const score = similarityByPlayerId.get(player.id)
+        return `${player.name}: ${formatLogScore(score)}`
+      })
+      .join(', ')}.`,
+  )
+  addLog(
+    state,
+    `Winner logic -> Final Duel uses the neutral judge word "${state.judgeWord}". ${winner.name} is closest by similarity.`,
+  )
+  addLog(state, `${winner.name} wins the hand for ${potAmount}.`)
+
+  state.handComplete = true
+  state.phase = 'handComplete'
+  state.currentPlayerIndex = null
+
+  return state
+}
+
 function moveToShowdownVoting(state) {
   if (countRemainingContenders(state) <= 1) {
     return settleUncontestedPot(state)
+  }
+
+  const judge = getJudgePlayerFromState(state)
+
+  if (!judge) {
+    if (state.showdownMode === 'similarityDuel') {
+      return resolveSimilarityDuel(state)
+    }
+
+    throw new Error('Cannot begin showdown voting without an assigned judge.')
   }
 
   state.phase = 'showdownVoting'
@@ -294,8 +409,53 @@ function moveToShowdownVoting(state) {
 
   addLog(
     state,
-    `Showdown begins. Judge ${getJudgePlayerFromState(state).name} votes with the table and similarity score decides the third category.`,
+    `Showdown voting begins. Judge ${judge.name} votes with the table and similarity score decides the third category.`,
   )
+
+  return state
+}
+
+function moveToDebateStage(state) {
+  if (countRemainingContenders(state) <= 1) {
+    return settleUncontestedPot(state)
+  }
+
+  state.phase = 'debate'
+  state.currentPlayerIndex = null
+
+  if (state.showdownMode === 'similarityDuel') {
+    addLog(
+      state,
+      `Debate stage begins. Final Duel words are revealed against neutral judge word "${state.judgeWord}". Similarity will decide the winner after arguments.`,
+    )
+  } else {
+    addLog(
+      state,
+      `Debate stage begins. Contenders reveal their words and argue closest connection to "${state.judgeWord}" before voting.`,
+    )
+  }
+
+  return state
+}
+
+function startFinalDuelJudgePhase(state) {
+  state.judgePlayerId = null
+  state.judgeWord = drawNeutralJudgeWord(state)
+  state.showdownMode = 'similarityDuel'
+  state.phase = 'postflop'
+
+  resetBettingRound(state)
+
+  addLog(
+    state,
+    `Final Duel begins. Neutral judge word: "${state.judgeWord}". Both players stay active; no judge vote will be used.`,
+  )
+
+  state.currentPlayerIndex = findNextActionableIndex(state, state.dealerIndex)
+
+  if (state.currentPlayerIndex === null) {
+    return moveToDebateStage(state)
+  }
 
   return state
 }
@@ -305,6 +465,10 @@ function startPostflopJudgePhase(state) {
 
   if (remainingContenderCount <= 1) {
     return settleUncontestedPot(state)
+  }
+
+  if (shouldUseFinalDuel(state)) {
+    return startFinalDuelJudgePhase(state)
   }
 
   const judgeIndex = chooseJudgeIndex(state)
@@ -336,7 +500,7 @@ function startPostflopJudgePhase(state) {
   state.currentPlayerIndex = findNextActionableIndex(state, state.dealerIndex)
 
   if (state.currentPlayerIndex === null) {
-    return moveToShowdownVoting(state)
+    return moveToDebateStage(state)
   }
 
   return state
@@ -348,7 +512,7 @@ function advanceAfterCompletedBettingRound(state) {
   }
 
   if (state.phase === 'postflop') {
-    return moveToShowdownVoting(state)
+    return moveToDebateStage(state)
   }
 
   return state
@@ -633,6 +797,7 @@ function setUpNewHand(state, rng = Math.random) {
   state.minRaise = state.bigBlind
   state.judgePlayerId = null
   state.judgeWord = null
+  state.showdownMode = null
   state.showdown = null
 
   for (const player of state.players) {
@@ -875,6 +1040,7 @@ export function createInitialGame(options = {}) {
     bigBlind,
     judgePlayerId: null,
     judgeWord: null,
+    showdownMode: null,
     handComplete: false,
     tableComplete: false,
     showdown: null,
@@ -911,6 +1077,20 @@ export function applyPlayerAction(previousState, action, amount) {
   }
 
   return applyPostActionState(state, actorIndex)
+}
+
+export function completeDebateStage(previousState) {
+  const state = deepClone(previousState)
+
+  if (state.phase !== 'debate') {
+    throw new Error('Debate can only be completed during the debate stage.')
+  }
+
+  if (state.showdownMode === 'similarityDuel') {
+    return resolveSimilarityDuel(state)
+  }
+
+  return moveToShowdownVoting(state)
 }
 
 export function resolveShowdownVotes(previousState, payload) {

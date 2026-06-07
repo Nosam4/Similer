@@ -2,6 +2,7 @@ import { formatScore } from './uiHelpers'
 
 function ShowdownVotingPanel({
   judge,
+  judgeWord = null,
   contenders,
   defaultPlayerVotes,
   effectivePlayerVotes,
@@ -25,6 +26,7 @@ function ShowdownVotingPanel({
   setOnlineJudgeVoteValue = null,
   onSubmitOnlineJudgeVote = null,
 }) {
+  const displayJudgeWord = judge?.holeWord ?? judgeWord
   const myContender = contenders.find((player) => player.id === myPlayerId) ?? null
   const isJudge = judge?.id === myPlayerId
   const myPlayerVoteSubmitted =
@@ -38,7 +40,7 @@ function ShowdownVotingPanel({
       >
         <h3>Showdown Voting</h3>
         <p>
-          Judge word is <b>{judge?.holeWord}</b>. Each active contender submits
+          Judge word is <b>{displayJudgeWord}</b>. Each active contender submits
           their own player vote, and the judge submits the judge vote.
         </p>
 
@@ -133,7 +135,7 @@ function ShowdownVotingPanel({
     >
       <h3>Showdown Voting</h3>
       <p>
-        Judge word is <b>{judge?.holeWord}</b>. Submit every player vote plus the
+        Judge word is <b>{displayJudgeWord}</b>. Submit every player vote plus the
         judge vote to resolve winner.
       </p>
 
@@ -180,7 +182,7 @@ function ShowdownVotingPanel({
           <p key={row.playerId}>
             Similarity | {row.playerName} ({row.playerWord})
             {' -> '}
-            {judge?.holeWord}: {formatScore(row.similarity)}
+            {displayJudgeWord}: {formatScore(row.similarity)}
           </p>
         ))}
       </div>
