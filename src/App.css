@@ -49,13 +49,27 @@
 
 .turn-panel,
 .showdown-voting-panel,
-.hand-complete-panel {
+.hand-complete-panel,
+.busted-panel {
   display: grid;
   gap: 10px;
 }
 
 .winner-line {
   font-weight: 700;
+}
+
+.busted-panel {
+  border: 1px solid rgba(155, 35, 30, 0.35);
+  border-radius: 12px;
+  background: rgba(155, 35, 30, 0.06);
+  padding: 12px;
+  color: #5b211f;
+}
+
+.busted-panel h3 {
+  color: #9b231e;
+  letter-spacing: 0.08em;
 }
 
 .judge-row {

@@ -15,6 +15,7 @@ import {
   startNextHand,
 } from './wordgame/engine'
 import ActionLogPanel from './components/ActionLogPanel'
+import BustedPanel from './components/BustedPanel'
 import ConfettiComponent from './components/ConfettiComponent'
 import HandCompletePanel from './components/HandCompletePanel'
 import JudgeRow from './components/JudgeRow'
@@ -470,6 +471,16 @@ function App() {
     }
   }
 
+  const myOnlinePlayer =
+    isOnlinePlaying && myOnlineSeatIndex !== null
+      ? game.players.find((player) => player.id === myOnlineSeatIndex) ?? null
+      : null
+  const isBustedOnline = Boolean(
+    isOnlinePlaying &&
+      myOnlinePlayer &&
+      myOnlinePlayer.stack <= 0 &&
+      !myOnlinePlayer.inHand,
+  )
   const isMyTurnOnline = isOnlinePlaying && actor && actor.id === myOnlineSeatIndex
   const onlinePlayerVoteValue =
     playerVotes[myOnlineSeatIndex] ?? onlineVotes.playerVotes[myOnlineSeatIndex] ?? ''
@@ -493,8 +504,12 @@ function App() {
 
       return !isOnlinePlaying || payout.playerId === myOnlineSeatIndex
     })
+  const shouldHideTurnWaitError =
+    errorText === TURN_WAIT_ERROR &&
+    isOnlinePlaying &&
+    (isMyTurnOnline || isBustedOnline || isShowdownVoting || game.handComplete)
   const visibleErrorText =
-    errorText === TURN_WAIT_ERROR && isOnlinePlaying && isMyTurnOnline ? '' : errorText
+    shouldHideTurnWaitError ? '' : errorText
 
   function toggleWordReveal(playerId) {
     if (isOnlinePlaying && myOnlineSeatIndex !== null && playerId !== myOnlineSeatIndex) {
@@ -549,7 +564,9 @@ function App() {
           </div>
         ) : null}
 
-        {game.handComplete ? (
+        {isBustedOnline && !game.handComplete ? (
+          <BustedPanel playerName={myOnlinePlayer?.name} />
+        ) : game.handComplete ? (
           <HandCompletePanel
             game={game}
             onBeginNextHand={beginNextHand}

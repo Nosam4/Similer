@@ -113,13 +113,6 @@ function ShowdownVotingPanel({
           <p>
             Judge vote ({judge?.name}): {judgeVoteSubmitted ? 'Submitted' : 'Pending'}
           </p>
-          {similarityRows.map((row) => (
-            <p key={row.playerId}>
-              Similarity | {row.playerName} ({row.playerWord})
-              {' -> '}
-              {judge?.holeWord}: {formatScore(row.similarity)}
-            </p>
-          ))}
         </div>
 
         <button
