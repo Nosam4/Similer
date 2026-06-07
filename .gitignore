@@ -15,6 +15,13 @@ dist-ssr
 .env.local
 .env.*.local
 
+# Local Python/vector generation artifacts
+.venv*/
+.gensim-data/
+word2vec-google-news-300*
+*.bin
+*.bin.gz
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -15,6 +15,7 @@ import {
   startNextHand,
 } from './wordgame/engine'
 import ActionLogPanel from './components/ActionLogPanel'
+import ConfettiComponent from './components/ConfettiComponent'
 import HandCompletePanel from './components/HandCompletePanel'
 import JudgeRow from './components/JudgeRow'
 import OnlineRoomPanel from './components/OnlineRoomPanel'
@@ -86,9 +87,9 @@ function withOnlineVotes(game, onlineVotes) {
 }
 
 function withoutOnlineVotes(game) {
-  const nextGame = { ...game }
-  delete nextGame.onlineVotes
-  return nextGame
+  const { onlineVotes, ...rest } = game
+  void onlineVotes
+  return rest
 }
 
 function App() {
@@ -483,6 +484,15 @@ function App() {
       [myOnlineSeatIndex]: true,
     }
   }, [isOnlinePlaying, myOnlineSeatIndex, revealByPlayerId])
+  const confettiActive =
+    game.handComplete &&
+    (game.showdown?.payouts ?? []).some((payout) => {
+      if (payout.amount <= 0) {
+        return false
+      }
+
+      return !isOnlinePlaying || payout.playerId === myOnlineSeatIndex
+    })
   const visibleErrorText =
     errorText === TURN_WAIT_ERROR && isOnlinePlaying && isMyTurnOnline ? '' : errorText
 
@@ -501,6 +511,8 @@ function App() {
 
   return (
     <main className="table-shell">
+      <ConfettiComponent active={confettiActive} />
+
       <OnlineRoomPanel
         onSessionChange={handleOnlineSessionChange}
         onStartOnlineGame={handleStartOnlineGame}
