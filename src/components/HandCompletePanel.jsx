@@ -3,11 +3,16 @@ import { formatScore } from './uiHelpers'
 function HandCompletePanel({
   game,
   onBeginNextHand,
+  onStartNewGame,
+  actionDisabled = false,
   pulseTick = 0,
   winnerPulseTick = 0,
 }) {
   const winnerLineClassName =
     winnerPulseTick > 0 ? 'winner-line stage-pulse stage-pulse-strong' : 'winner-line'
+  const tableWinner = game.tableComplete
+    ? game.players.find((player) => player.stack > 0)
+    : null
 
   return (
     <div
@@ -15,6 +20,12 @@ function HandCompletePanel({
       className={`hand-complete-panel${pulseTick > 0 ? ' stage-pulse stage-pulse-strong' : ''}`}
     >
       <h3>Hand Complete</h3>
+      {tableWinner ? (
+        <p key={`table-winner-line-${winnerPulseTick}`} className={winnerLineClassName}>
+          Table Winner: {tableWinner.name} wins the game with {tableWinner.stack} chips.
+        </p>
+      ) : null}
+
       {game.showdown?.type === 'uncontested' ? (
         <p key={`winner-line-${winnerPulseTick}`} className={winnerLineClassName}>
           {game.showdown.winnerName} won uncontested for {game.showdown.amount}.
@@ -118,8 +129,12 @@ function HandCompletePanel({
         </div>
       ) : null}
 
-      <button type="button" onClick={onBeginNextHand}>
-        Start Next Hand
+      <button
+        type="button"
+        disabled={actionDisabled}
+        onClick={game.tableComplete ? onStartNewGame : onBeginNextHand}
+      >
+        {game.tableComplete ? 'Start New Game' : 'Start Next Hand'}
       </button>
     </div>
   )

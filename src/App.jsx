@@ -30,6 +30,9 @@ import TurnPanel from './components/TurnPanel'
 import { saveRoomState, setRoomStatus } from './multiplayer/roomApi'
 
 const PLAYER_NAMES = ['North', 'East', 'South', 'West']
+const STARTING_STACK = 400
+const SMALL_BLIND = 5
+const BIG_BLIND = 10
 const TURN_WAIT_ERROR = 'It is not your turn yet.'
 const INITIAL_PULSE_TICKS = {
   phaseTile: 0,
@@ -96,13 +99,21 @@ function withoutOnlineVotes(game) {
   return rest
 }
 
+function getRestartPlayerNames(game, onlineSession) {
+  if (onlineSession?.players?.length >= 3) {
+    return getOnlinePlayerNames(onlineSession.players)
+  }
+
+  return game.players.map((player) => player.name)
+}
+
 function App() {
   const [localGame, setLocalGame] = useState(() => {
     return createInitialGame({
       playerNames: PLAYER_NAMES,
-      startingStack: 400,
-      smallBlind: 5,
-      bigBlind: 10,
+      startingStack: STARTING_STACK,
+      smallBlind: SMALL_BLIND,
+      bigBlind: BIG_BLIND,
     })
   })
   const [amountInput, setAmountInput] = useState('')
@@ -325,6 +336,33 @@ function App() {
     }
   }
 
+  async function startNewGame() {
+    const nextGame = createInitialGame({
+      playerNames: getRestartPlayerNames(game, onlineSession),
+      startingStack: STARTING_STACK,
+      smallBlind: SMALL_BLIND,
+      bigBlind: BIG_BLIND,
+    })
+
+    try {
+      if (isOnlinePlaying) {
+        setOnlineGameBusy(true)
+        await persistOnlineGame(nextGame)
+      } else {
+        setLocalGame(nextGame)
+      }
+      setErrorText('')
+      setAmountInput('')
+      setPlayerVotes({})
+      setJudgeVote('')
+      setRevealByPlayerId({})
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Could not start a new game.')
+    } finally {
+      setOnlineGameBusy(false)
+    }
+  }
+
   async function resolveVotes() {
     try {
       if (isOnlinePlaying && !canResolveVotes) {
@@ -455,9 +493,9 @@ function App() {
       const onlinePlayerNames = getOnlinePlayerNames(onlineSession.players)
       const initialSharedGame = createInitialGame({
         playerNames: onlinePlayerNames,
-        startingStack: 400,
-        smallBlind: 5,
-        bigBlind: 10,
+        startingStack: STARTING_STACK,
+        smallBlind: SMALL_BLIND,
+        bigBlind: BIG_BLIND,
       })
 
       const savedRoomState = await saveRoomState({
@@ -528,7 +566,17 @@ function App() {
       [myOnlineSeatIndex]: true,
     }
   }, [isOnlinePlaying, myOnlineSeatIndex, revealByPlayerId])
-  const confettiActive =
+  const tableWinner = game.tableComplete
+    ? game.players.find((player) => player.stack > 0) ?? null
+    : null
+  const tableLoserOnline = Boolean(
+    isOnlinePlaying &&
+      game.tableComplete &&
+      tableWinner &&
+      myOnlinePlayer &&
+      myOnlinePlayer.id !== tableWinner.id,
+  )
+  const handPayoutConfettiActive =
     game.handComplete &&
     (game.showdown?.payouts ?? []).some((payout) => {
       if (payout.amount <= 0) {
@@ -537,6 +585,10 @@ function App() {
 
       return !isOnlinePlaying || payout.playerId === myOnlineSeatIndex
     })
+  const confettiActive =
+    handPayoutConfettiActive ||
+    Boolean(game.tableComplete && tableWinner && (!isOnlinePlaying || myOnlinePlayer))
+  const confettiMode = tableLoserOnline ? 'loser' : 'winner'
   const shouldHideTurnWaitError =
     errorText === TURN_WAIT_ERROR &&
     isOnlinePlaying &&
@@ -559,7 +611,7 @@ function App() {
 
   return (
     <main className="table-shell">
-      <ConfettiComponent active={confettiActive} />
+      <ConfettiComponent active={confettiActive} mode={confettiMode} />
 
       <OnlineRoomPanel
         onSessionChange={handleOnlineSessionChange}
@@ -603,6 +655,8 @@ function App() {
           <HandCompletePanel
             game={game}
             onBeginNextHand={beginNextHand}
+            onStartNewGame={startNewGame}
+            actionDisabled={onlineGameBusy}
             pulseTick={pulseTicks.handPanel}
             winnerPulseTick={pulseTicks.winnerLine}
           />

@@ -60,6 +60,15 @@
   font-weight: 700;
 }
 
+.confetti-layer {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 99999;
+}
+
 .busted-panel {
   border: 1px solid rgba(155, 35, 30, 0.35);
   border-radius: 12px;
