@@ -26,6 +26,7 @@ import TurnPanel from './components/TurnPanel'
 import { saveRoomState, setRoomStatus } from './multiplayer/roomApi'
 
 const PLAYER_NAMES = ['North', 'East', 'South', 'West']
+const TURN_WAIT_ERROR = 'It is not your turn yet.'
 const INITIAL_PULSE_TICKS = {
   phaseTile: 0,
   judgeRow: 0,
@@ -43,6 +44,15 @@ function isWordGameState(candidate) {
     typeof candidate.phase === 'string' &&
     typeof candidate.handNumber === 'number'
   )
+}
+
+function getOnlinePlayerNames(players) {
+  const names = [...players]
+    .sort((left, right) => left.seat_index - right.seat_index)
+    .map((player) => String(player.display_name).trim())
+    .filter(Boolean)
+
+  return names.length >= 3 ? names : PLAYER_NAMES
 }
 
 function App() {
@@ -292,8 +302,9 @@ function App() {
 
     try {
       setOnlineGameBusy(true)
+      const onlinePlayerNames = getOnlinePlayerNames(onlineSession.players)
       const initialSharedGame = createInitialGame({
-        playerNames: PLAYER_NAMES,
+        playerNames: onlinePlayerNames,
         startingStack: 400,
         smallBlind: 5,
         bigBlind: 10,
@@ -350,6 +361,8 @@ function App() {
       [myOnlineSeatIndex]: true,
     }
   }, [isOnlinePlaying, myOnlineSeatIndex, revealByPlayerId])
+  const visibleErrorText =
+    errorText === TURN_WAIT_ERROR && isOnlinePlaying && isMyTurnOnline ? '' : errorText
 
   function toggleWordReveal(playerId) {
     if (isOnlinePlaying && myOnlineSeatIndex !== null && playerId !== myOnlineSeatIndex) {
@@ -430,7 +443,7 @@ function App() {
             setAmountInput={setAmountInput}
             onRunAction={(type, amountOverride) => {
               if (isOnlinePlaying && !isMyTurnOnline) {
-                setErrorText('It is not your turn yet.')
+                setErrorText(TURN_WAIT_ERROR)
                 return
               }
 
@@ -440,7 +453,7 @@ function App() {
           />
         )}
 
-        {errorText ? <p className="error-text">{errorText}</p> : null}
+        {visibleErrorText ? <p className="error-text">{visibleErrorText}</p> : null}
       </section>
 
       <ActionLogPanel log={game.log} />
