@@ -788,7 +788,7 @@ function startPlayerJudgePhase(state, judgeIndex, reason = null) {
 
   addLog(
     state,
-    `${judge.name} becomes the judge. Judge word: "${state.judgeWord}". Judge contributions stay at risk and judge does not act in postflop betting.`,
+    `${judge.name} becomes the judge. Judge word: "${state.judgeWord}". Judge contributions are held in escrow; active judges receive a stake refund when the hand ends, and correct judges can earn the Judge Tax. The judge does not act in postflop betting.`,
   )
   if (reason) {
     addLog(state, reason)

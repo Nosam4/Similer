@@ -604,14 +604,20 @@ function App() {
 
       return !isOnlinePlaying || payout.playerId === myOnlineSeatIndex
     })
+  const tableConfettiActive = Boolean(
+    game.tableComplete && tableWinner && (!isOnlinePlaying || myOnlinePlayer),
+  )
   const confettiActive =
     handPayoutConfettiActive ||
-    Boolean(game.tableComplete && tableWinner && (!isOnlinePlaying || myOnlinePlayer))
+    tableConfettiActive
   const confettiMode = game.tableComplete
     ? tableLoserOnline
       ? 'loser'
       : 'winner'
     : 'chips'
+  const confettiKey = game.tableComplete
+    ? `table-${tableWinner?.id ?? 'none'}-${confettiMode}`
+    : `hand-${game.handNumber}-${confettiMode}`
   const shouldHideTurnWaitError =
     errorText === TURN_WAIT_ERROR &&
     isOnlinePlaying &&
@@ -634,7 +640,7 @@ function App() {
 
   return (
     <main className="table-shell">
-      <ConfettiComponent active={confettiActive} mode={confettiMode} />
+      <ConfettiComponent key={confettiKey} active={confettiActive} mode={confettiMode} />
 
       <OnlineRoomPanel
         onSessionChange={handleOnlineSessionChange}
