@@ -588,7 +588,11 @@ function App() {
   const confettiActive =
     handPayoutConfettiActive ||
     Boolean(game.tableComplete && tableWinner && (!isOnlinePlaying || myOnlinePlayer))
-  const confettiMode = tableLoserOnline ? 'loser' : 'winner'
+  const confettiMode = game.tableComplete
+    ? tableLoserOnline
+      ? 'loser'
+      : 'winner'
+    : 'chips'
   const shouldHideTurnWaitError =
     errorText === TURN_WAIT_ERROR &&
     isOnlinePlaying &&

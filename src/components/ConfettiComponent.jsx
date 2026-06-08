@@ -52,7 +52,7 @@ function drawTieXOShape(ctx) {
   ctx.fillText(this.tieGlyph, 0, 0)
 }
 
-function ConfettiComponent({ active, mode = 'winner' }) {
+function ConfettiComponent({ active, mode = 'chips' }) {
   const [width, height] = useWindowSize()
 
   if (!active) {
@@ -61,23 +61,34 @@ function ConfettiComponent({ active, mode = 'winner' }) {
 
   const isLoserMode = mode === 'loser'
   const isDrawMode = mode === 'draw'
+  const isWinnerMode = mode === 'winner'
 
   return (
     <div className="confetti-layer" aria-hidden="true">
       <Confetti
         width={width}
         height={height}
-        numberOfPieces={isLoserMode ? 220 : isDrawMode ? 260 : 320}
+        numberOfPieces={isLoserMode ? 220 : isDrawMode ? 260 : 300}
         recycle={false}
         gravity={isLoserMode ? 0.4 : isDrawMode ? 0.34 : 0.3}
         initialVelocityY={isLoserMode ? 10 : isDrawMode ? 12 : 15}
-        colors={isLoserMode ? loserColors : isDrawMode ? drawColors : winnerColors}
+        colors={
+          isLoserMode
+            ? loserColors
+            : isDrawMode
+              ? drawColors
+              : isWinnerMode
+                ? winnerColors
+                : undefined
+        }
         drawShape={
           isLoserMode
             ? drawLoserLShape
             : isDrawMode
               ? drawTieXOShape
-              : drawWinnerWShape
+              : isWinnerMode
+                ? drawWinnerWShape
+                : undefined
         }
       />
     </div>
