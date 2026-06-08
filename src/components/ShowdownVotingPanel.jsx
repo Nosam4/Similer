@@ -29,9 +29,25 @@ function ShowdownVotingPanel({
 }) {
   const displayJudgeWord = judge?.holeWord ?? judgeWord
   const myContender = contenders.find((player) => player.id === myPlayerId) ?? null
+  const myPlayerVoteTargets = myContender
+    ? contenders.filter((target) => target.id !== myContender.id)
+    : []
   const isJudge = judge?.id === myPlayerId
+  const isValidSubmittedPlayerVote = (voter) => {
+    const voteTarget = submittedPlayerVotes[voter.id]
+
+    return (
+      voteTarget !== undefined &&
+      voteTarget !== '' &&
+      Number(voteTarget) !== voter.id &&
+      contenders.some((target) => target.id === Number(voteTarget))
+    )
+  }
   const myPlayerVoteSubmitted =
-    myContender && submittedPlayerVotes[myPlayerId] !== undefined && submittedPlayerVotes[myPlayerId] !== ''
+    myContender && isValidSubmittedPlayerVote(myContender)
+  const onlinePlayerVoteIsValid = myPlayerVoteTargets.some((target) => {
+    return target.id === Number(onlinePlayerVoteValue)
+  })
 
   if (isOnlinePlaying) {
     return (
@@ -62,7 +78,7 @@ function ShowdownVotingPanel({
                 onChange={(event) => setOnlinePlayerVoteValue?.(event.target.value)}
               >
                 <option value="">Choose a player</option>
-                {contenders.map((target) => (
+                {myPlayerVoteTargets.map((target) => (
                   <option key={target.id} value={target.id}>
                     {target.name} ({target.holeWord})
                   </option>
@@ -70,7 +86,7 @@ function ShowdownVotingPanel({
               </select>
               <button
                 type="button"
-                disabled={!onlinePlayerVoteValue || onlineGameBusy}
+                disabled={!onlinePlayerVoteIsValid || onlineGameBusy}
                 onClick={onSubmitOnlinePlayerVote}
               >
                 {myPlayerVoteSubmitted ? 'Update Player Vote' : 'Submit Player Vote'}
@@ -117,9 +133,7 @@ function ShowdownVotingPanel({
           {contenders.map((voter) => (
             <p key={voter.id}>
               {voter.name} vote:{' '}
-              {submittedPlayerVotes[voter.id] !== undefined && submittedPlayerVotes[voter.id] !== ''
-                ? 'Submitted'
-                : 'Pending'}
+              {isValidSubmittedPlayerVote(voter) ? 'Submitted' : 'Pending'}
             </p>
           ))}
           {usesJudgeVote ? (
@@ -174,11 +188,13 @@ function ShowdownVotingPanel({
                 }))
               }}
             >
-              {contenders.map((target) => (
-                <option key={target.id} value={target.id}>
-                  {target.name} ({target.holeWord})
-                </option>
-              ))}
+              {contenders
+                .filter((target) => target.id !== voter.id)
+                .map((target) => (
+                  <option key={target.id} value={target.id}>
+                    {target.name} ({target.holeWord})
+                  </option>
+                ))}
             </select>
           </label>
         ))}

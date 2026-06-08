@@ -191,7 +191,14 @@ function App() {
       : ''
   const submittedPlayerVoteCount = contenders.filter((voter) => {
     const value = effectivePlayerVotes[voter.id]
-    return value !== undefined && value !== ''
+    const targetId = Number(value)
+
+    return (
+      value !== undefined &&
+      value !== '' &&
+      targetId !== voter.id &&
+      contenders.some((target) => target.id === targetId)
+    )
   }).length
   const judgeVoteSubmitted = !judge || effectiveJudgeVote !== ''
 
@@ -200,7 +207,14 @@ function App() {
     contenders.length > 1 &&
     contenders.every((voter) => {
       const value = effectivePlayerVotes[voter.id]
-      return value !== undefined && value !== ''
+      const targetId = Number(value)
+
+      return (
+        value !== undefined &&
+        value !== '' &&
+        targetId !== voter.id &&
+        contenders.some((target) => target.id === targetId)
+      )
     }) &&
     (!judge || effectiveJudgeVote !== '')
 
@@ -423,6 +437,11 @@ function App() {
 
     if (!contenders.some((player) => player.id === targetId)) {
       setErrorText('Choose a valid player vote before submitting.')
+      return
+    }
+
+    if (targetId === voterId) {
+      setErrorText('Choose another player. You cannot vote for your own word.')
       return
     }
 

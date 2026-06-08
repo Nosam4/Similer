@@ -996,6 +996,10 @@ function buildVotingResolution(state, playerVotes, judgeVote) {
       throw new Error(`Invalid vote target selected by ${voter.name}.`)
     }
 
+    if (voteTargetId === voter.id) {
+      throw new Error(`${voter.name} cannot vote for their own word.`)
+    }
+
     voteCountByPlayerId.set(voteTargetId, (voteCountByPlayerId.get(voteTargetId) ?? 0) + 1)
   }
 
@@ -1089,6 +1093,10 @@ function buildNeutralVotingResolution(state, playerVotes) {
 
     if (!contenderIdSet.has(voteTargetId)) {
       throw new Error(`Invalid vote target selected by ${voter.name}.`)
+    }
+
+    if (voteTargetId === voter.id) {
+      throw new Error(`${voter.name} cannot vote for their own word.`)
     }
 
     voteCountByPlayerId.set(voteTargetId, (voteCountByPlayerId.get(voteTargetId) ?? 0) + 1)
