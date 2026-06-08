@@ -14,6 +14,8 @@ const CATEGORY_LABELS = {
   similarity: 'Similarity',
 }
 
+const JUDGE_TAX_RATE = 0.2
+
 const WORDS = matrixData.words
 const SCORES = matrixData.scores
 const WORD_INDEX_BY_WORD = new Map(WORDS.map((word, index) => [word, index]))
@@ -132,20 +134,19 @@ function reserveAmountFromPots(pots, amount, canReserveFromPot) {
   return amount - remaining
 }
 
-function reserveJudgePayoutFromPots(pots, judgePlayerId, judgeContribution, judgePayout) {
-  if (judgePlayerId === null || judgePayout <= 0) {
+function reserveJudgePayoutFromPots(pots, judgePlayerId, judgeStakeRefund, judgeBonus) {
+  if (judgePlayerId === null || judgeStakeRefund + judgeBonus <= 0) {
     return
   }
 
-  const reservedStake = reserveAmountFromPots(
+  reserveAmountFromPots(
     pots,
-    Math.min(judgeContribution, judgePayout),
+    judgeStakeRefund,
     (pot) => pot.contributorIds.includes(judgePlayerId),
   )
-  const bonusToReserve = judgePayout - reservedStake
 
-  if (bonusToReserve > 0) {
-    reserveAmountFromPots(pots, bonusToReserve, () => true)
+  if (judgeBonus > 0) {
+    reserveAmountFromPots(pots, judgeBonus, () => true)
   }
 }
 
@@ -160,11 +161,12 @@ function settlePotsByRanking(state, rankedPlayerIds, options = {}) {
 
   const {
     judgePlayerId = null,
-    judgeContribution = 0,
+    judgeStakeRefund = 0,
+    judgeBonus = 0,
     judgePayout = 0,
   } = options
 
-  reserveJudgePayoutFromPots(sidePots, judgePlayerId, judgeContribution, judgePayout)
+  reserveJudgePayoutFromPots(sidePots, judgePlayerId, judgeStakeRefund, judgeBonus)
 
   if (judgePlayerId !== null && judgePayout > 0) {
     addPayoutToMap(state, payoutByPlayerId, judgePlayerId, judgePayout)
@@ -441,7 +443,14 @@ function settleUncontestedPot(state) {
     throw new Error('No contender available for uncontested pot resolution.')
   }
 
-  const settlement = settlePotsByRanking(state, [winner.id])
+  const judge = getJudgePlayerFromState(state)
+  const judgeStakeRefund = judge && !judge.folded ? judge.totalCommitted : 0
+  const settlement = settlePotsByRanking(state, [winner.id], {
+    judgePlayerId: judge?.id ?? null,
+    judgeStakeRefund,
+    judgeBonus: 0,
+    judgePayout: judgeStakeRefund,
+  })
   const potAmount = settlement.payoutByPlayerId.get(winner.id) ?? 0
 
   state.showdown = {
@@ -450,6 +459,18 @@ function settleUncontestedPot(state) {
     winnerName: winner.name,
     winnerWord: winner.holeWord,
     amount: potAmount,
+    judge: judge
+      ? {
+          playerId: judge.id,
+          playerName: judge.name,
+          contribution: judge.totalCommitted,
+          stakeRefund: judgeStakeRefund,
+          bonus: 0,
+          taxRate: JUDGE_TAX_RATE,
+          payout: judgeStakeRefund,
+          wasFolded: judge.folded,
+        }
+      : null,
     payouts: settlement.payouts,
     sidePots: settlement.sidePots,
   }
@@ -459,6 +480,12 @@ function settleUncontestedPot(state) {
   state.currentPlayerIndex = null
 
   logSidePotAwards(state, settlement)
+  if (judge && judgeStakeRefund > 0) {
+    addLog(
+      state,
+      `${judge.name} receives stake refund ${judgeStakeRefund}; no Judge Tax is awarded because the hand ended uncontested.`,
+    )
+  }
   addLog(state, `${winner.name} wins ${potAmount} chips uncontested.`)
 
   return state
@@ -1580,13 +1607,17 @@ export function resolveShowdownVotes(previousState, payload) {
   const totalPot = getPotTotal(state)
   const judgeContribution = judge.totalCommitted
   const judgeAligned = resolution.judgeVoteWinner === winner.id
-  const judgeBonus = judgeAligned ? Math.floor(totalPot * 0.05) : 0
-  const judgePayout = judgeAligned
-    ? Math.min(totalPot, judgeContribution + judgeBonus)
+  const judgeWasFolded = judge.folded
+  const judgeStakeRefund = judgeWasFolded ? 0 : judgeContribution
+  const maxJudgeBonus = Math.max(0, totalPot - judgeStakeRefund)
+  const judgeBonus = judgeAligned
+    ? Math.min(Math.floor(totalPot * JUDGE_TAX_RATE), maxJudgeBonus)
     : 0
+  const judgePayout = judgeStakeRefund + judgeBonus
   const settlement = settlePotsByRanking(state, resolution.rankedPlayerIds, {
     judgePlayerId: judge.id,
-    judgeContribution,
+    judgeStakeRefund,
+    judgeBonus,
     judgePayout,
   })
   const winnerPayout = settlement.payoutByPlayerId.get(winner.id) ?? 0
@@ -1600,8 +1631,11 @@ export function resolveShowdownVotes(previousState, payload) {
       voteForPlayerId: resolution.judgeVoteWinner,
       alignedWithWinner: judgeAligned,
       contribution: judgeContribution,
+      stakeRefund: judgeStakeRefund,
       bonus: judgeBonus,
+      taxRate: JUDGE_TAX_RATE,
       payout: judgePayout,
+      wasFolded: judgeWasFolded,
     },
     contenders: resolution.contenders.map((player) => {
       return {
@@ -1641,12 +1675,24 @@ export function resolveShowdownVotes(previousState, payload) {
   addLog(state, `${winner.name} wins the hand for ${winnerPayout}.`)
 
   if (judgeAligned && judgePayout > 0) {
+    if (judgeWasFolded) {
+      addLog(
+        state,
+        `${judge.name} selected the winner and receives Judge Tax ${judgeBonus}; folded stake is not refunded.`,
+      )
+    } else {
+      addLog(
+        state,
+        `${judge.name} selected the winner and receives ${judgePayout} (stake refund ${judgeStakeRefund} + Judge Tax ${judgeBonus}).`,
+      )
+    }
+  } else if (!judgeWasFolded && judgeStakeRefund > 0) {
     addLog(
       state,
-      `${judge.name} aligned with the winner and receives ${judgePayout} (stake ${judgeContribution} + bonus ${judgeBonus}).`,
+      `${judge.name} missed the winner but receives stake refund ${judgeStakeRefund}; no Judge Tax bonus.`,
     )
   } else {
-    addLog(state, `${judge.name} did not align with the winner and receives no judge payout.`)
+    addLog(state, `${judge.name} missed the winner and receives no judge payout.`)
   }
 
   state.handComplete = true
