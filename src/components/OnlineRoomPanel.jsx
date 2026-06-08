@@ -14,6 +14,7 @@ import {
 } from '../multiplayer/roomApi'
 
 const DEFAULT_DISPLAY_NAME = 'Player'
+const MAX_ROOM_PLAYERS = 8
 
 function OnlineRoomPanel({
   onSessionChange = null,
@@ -158,7 +159,7 @@ function OnlineRoomPanel({
   }, [myPlayer, onSessionChange, players, room, roomState, userId])
 
   const seatRows = useMemo(() => {
-    const maxPlayers = room?.max_players ?? 4
+    const maxPlayers = room?.max_players ?? MAX_ROOM_PLAYERS
     const seats = []
 
     for (let seatIndex = 0; seatIndex < maxPlayers; seatIndex += 1) {
@@ -175,7 +176,10 @@ function OnlineRoomPanel({
     setErrorText('')
 
     try {
-      const created = await createRoom({ displayName: trimmedName })
+      const created = await createRoom({
+        displayName: trimmedName,
+        maxPlayers: MAX_ROOM_PLAYERS,
+      })
       const [nextRoom, nextPlayers] = await Promise.all([
         fetchRoom(created.room_id),
         fetchRoomPlayers(created.room_id),
@@ -265,8 +269,8 @@ function OnlineRoomPanel({
       <h3>Online Multiplayer (Supabase Rooms)</h3>
 
       <p className="online-room-copy">
-        Phase 1 foundation: create/join a 4-player room, sync seats and ready state in real
-        time. Gameplay sync is next.
+        Create or join a room for up to 8 players. Seats, ready state, and gameplay
+        sync live through Supabase.
       </p>
 
       {!isSupabaseConfigured ? (
@@ -293,7 +297,7 @@ function OnlineRoomPanel({
       {!isSupabaseConfigured ? null : !room ? (
         <div className="online-room-actions">
           <button type="button" disabled={booting || busy || !userId} onClick={handleCreateRoom}>
-            Create Room
+            Create 8-Player Room
           </button>
 
           <label>
@@ -371,11 +375,15 @@ function OnlineRoomPanel({
             >
               <strong>Seat {seat.seatIndex + 1}</strong>
               {seat.occupant ? (
-                <span>
-                  {seat.occupant.display_name}
-                  {seat.occupant.user_id === userId ? ' (You)' : ''}
-                  {seat.occupant.is_ready ? ' | Ready' : ' | Not Ready'}
-                </span>
+                <>
+                  <span className="seat-name">
+                    {seat.occupant.display_name}
+                    {seat.occupant.user_id === userId ? ' (You)' : ''}
+                  </span>
+                  <span className="seat-state">
+                    {seat.occupant.is_ready ? 'Ready' : 'Not Ready'}
+                  </span>
+                </>
               ) : (
                 <span>Open seat</span>
               )}

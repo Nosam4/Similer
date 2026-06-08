@@ -49,11 +49,19 @@ function unwrapSingleRow(data) {
   return data ?? null
 }
 
-export async function createRoom({ displayName }) {
+export async function createRoom({ displayName, maxPlayers = 8 }) {
   const client = getSupabaseClient()
-  const response = await client.rpc('create_room', {
+  const payload = {
     p_display_name: displayName,
-  })
+    p_max_players: maxPlayers,
+  }
+  let response = await client.rpc('create_room', payload)
+
+  if (response.error && /p_max_players|schema cache|function/i.test(response.error.message)) {
+    response = await client.rpc('create_room', {
+      p_display_name: displayName,
+    })
+  }
 
   if (response.error) {
     throw new Error(response.error.message)
