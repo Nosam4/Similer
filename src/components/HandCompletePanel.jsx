@@ -13,6 +13,9 @@ function HandCompletePanel({
   const tableWinner = game.tableComplete
     ? game.players.find((player) => player.stack > 0)
     : null
+  const getPlayerName = (playerId, fallback = 'No clear majority') => {
+    return game.players.find((player) => player.id === playerId)?.name ?? fallback
+  }
 
   return (
     <div
@@ -39,23 +42,9 @@ function HandCompletePanel({
           </p>
           <p>
             Category winners: Player Vote ={' '}
-            {
-              game.players.find(
-                (player) => player.id === game.showdown.categories.playerVoteWinnerId,
-              )?.name
-            }
-            , Judge Vote ={' '}
-            {
-              game.players.find(
-                (player) => player.id === game.showdown.categories.judgeVoteWinnerId,
-              )?.name
-            }
-            , Similarity ={' '}
-            {
-              game.players.find(
-                (player) => player.id === game.showdown.categories.similarityWinnerId,
-              )?.name
-            }
+            {getPlayerName(game.showdown.categories.playerVoteWinnerId, '--')}, Judge
+            Vote = {getPlayerName(game.showdown.categories.judgeVoteWinnerId, '--')},
+            Similarity = {getPlayerName(game.showdown.categories.similarityWinnerId, '--')}
           </p>
           {game.showdown.contenders.map((contender) => (
             <p key={contender.playerId}>
@@ -103,17 +92,8 @@ function HandCompletePanel({
           </p>
           <p>
             Category winners: Player Vote ={' '}
-            {
-              game.players.find(
-                (player) => player.id === game.showdown.categories.playerVoteWinnerId,
-              )?.name
-            }
-            , Similarity ={' '}
-            {
-              game.players.find(
-                (player) => player.id === game.showdown.categories.similarityWinnerId,
-              )?.name
-            }
+            {getPlayerName(game.showdown.categories.playerVoteWinnerId)}, Similarity ={' '}
+            {getPlayerName(game.showdown.categories.similarityWinnerId, '--')}
           </p>
           {game.showdown.contenders.map((contender) => (
             <p key={contender.playerId}>

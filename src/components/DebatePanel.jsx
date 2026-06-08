@@ -33,7 +33,8 @@ function DebatePanel({
       ) : isNeutralVoting ? (
         <p>
           All-in protection is active: no contender becomes the judge. Player
-          Vote and Similarity decide the winner after arguments.
+          Vote wins with a clear majority; otherwise similarity decides after
+          arguments.
         </p>
       ) : (
         <p>

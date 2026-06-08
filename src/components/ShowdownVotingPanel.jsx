@@ -64,7 +64,8 @@ function ShowdownVotingPanel({
         ) : (
           <p>
             Neutral judge word is <b>{displayJudgeWord}</b>. Each active
-            contender submits a player vote; similarity breaks any split.
+            contender submits a player vote. A clear majority wins; otherwise
+            similarity decides.
           </p>
         )}
 
@@ -122,7 +123,10 @@ function ShowdownVotingPanel({
           ) : usesJudgeVote ? (
             <p>Waiting for {judge?.name} to submit the judge vote.</p>
           ) : (
-            <p>No judge vote this hand. Player Vote and Similarity decide it.</p>
+            <p>
+              No judge vote this hand. A clear Player Vote majority can win the
+              hand.
+            </p>
           )}
         </div>
 
@@ -169,8 +173,8 @@ function ShowdownVotingPanel({
         </p>
       ) : (
         <p>
-          Neutral judge word is <b>{displayJudgeWord}</b>. Submit every player
-          vote; similarity breaks any split.
+          Neutral judge word is <b>{displayJudgeWord}</b>. Submit every player vote.
+          A clear majority wins; otherwise similarity decides.
         </p>
       )}
 

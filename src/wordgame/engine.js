@@ -205,10 +205,18 @@ function buildWinnerExplanation(resolution, winner) {
 
 function buildNeutralVotingExplanation(resolution, winner) {
   if (resolution.winnerReason === 'player-vote-and-similarity') {
-    return `${winner.name} wins by taking Player Vote and Similarity.`
+    return `${winner.name} wins clearly: Player Vote reached a majority, and Similarity agreed.`
   }
 
-  return `Player Vote and Similarity split, so similarity breaks the tie in favor of ${winner.name}.`
+  if (resolution.winnerReason === 'neutral-clear-player-vote-majority') {
+    return `${winner.name} wins by clear Player Vote majority; Similarity only decides neutral voting when there is no majority.`
+  }
+
+  if (resolution.winnerReason === 'neutral-no-majority-similarity') {
+    return `No word received a clear Player Vote majority, so Similarity decides in favor of ${winner.name}.`
+  }
+
+  return `${winner.name} wins the neutral showdown.`
 }
 
 function makeFreshPlayer(id, name, stack) {
@@ -443,7 +451,7 @@ function moveToShowdownVoting(state) {
   if (!judge) {
     addLog(
       state,
-      'Showdown voting begins with a neutral judge word. Contenders submit player votes; similarity breaks any split.',
+      'Showdown voting begins with a neutral judge word. A clear Player Vote majority wins; otherwise Similarity decides.',
     )
     return state
   }
@@ -472,7 +480,7 @@ function moveToDebateStage(state) {
   } else if (state.showdownMode === 'neutralVoting') {
     addLog(
       state,
-      `Debate stage begins. Neutral judge word "${state.judgeWord}" is live because all-in contenders are protected. Player Vote and Similarity will decide the winner.`,
+      `Debate stage begins. Neutral judge word "${state.judgeWord}" is live because all-in contenders are protected. A clear Player Vote majority wins; otherwise Similarity decides.`,
     )
   } else {
     addLog(
@@ -1117,6 +1125,15 @@ function buildNeutralVotingResolution(state, playerVotes) {
     return votes * 1000 + similarity
   })[0]
 
+  const maxVoteCount = Math.max(...Array.from(voteCountByPlayerId.values()))
+  const topVotePlayerIds = contenderIds.filter((playerId) => {
+    return (voteCountByPlayerId.get(playerId) ?? 0) === maxVoteCount
+  })
+  const clearMajorityWinner =
+    topVotePlayerIds.length === 1 && maxVoteCount > contenders.length / 2
+      ? topVotePlayerIds[0]
+      : null
+
   const similarityWinner = rankContenderIdsBy(state, contenderIds, (playerId) => {
     const similarity = similarityByPlayerId.get(playerId) ?? Number.NEGATIVE_INFINITY
     const votes = voteCountByPlayerId.get(playerId) ?? 0
@@ -1124,20 +1141,27 @@ function buildNeutralVotingResolution(state, playerVotes) {
   })[0]
 
   const categoryWinsByPlayerId = new Map(contenderIds.map((id) => [id, []]))
-  categoryWinsByPlayerId.get(playerVoteWinner).push('playerVote')
+  if (clearMajorityWinner !== null) {
+    categoryWinsByPlayerId.get(clearMajorityWinner).push('playerVote')
+  }
   categoryWinsByPlayerId.get(similarityWinner).push('similarity')
 
-  const winnerId = similarityWinner
-  const winnerReason =
-    playerVoteWinner === similarityWinner
-      ? 'player-vote-and-similarity'
-      : 'neutral-split-similarity-tiebreak'
+  const winnerId = clearMajorityWinner ?? similarityWinner
+  let winnerReason = 'neutral-no-majority-similarity'
+
+  if (clearMajorityWinner !== null) {
+    winnerReason =
+      clearMajorityWinner === similarityWinner
+        ? 'player-vote-and-similarity'
+        : 'neutral-clear-player-vote-majority'
+  }
 
   return {
     contenders,
     winnerId,
     winnerReason,
-    playerVoteWinner,
+    playerVoteWinner: clearMajorityWinner,
+    voteLeader: playerVoteWinner,
     similarityWinner,
     voteCountByPlayerId,
     similarityByPlayerId,
@@ -1291,9 +1315,17 @@ function resolveNeutralVoting(previousState, playerVotes) {
     ],
   }
 
+  const playerVoteWinnerName =
+    resolution.playerVoteWinner === null
+      ? 'No clear majority'
+      : state.players.find((player) => player.id === resolution.playerVoteWinner).name
+  const similarityWinnerName = state.players.find(
+    (player) => player.id === resolution.similarityWinner,
+  ).name
+
   addLog(
     state,
-    `Category winners -> Player Vote: ${state.players.find((player) => player.id === resolution.playerVoteWinner).name}, Similarity: ${state.players.find((player) => player.id === resolution.similarityWinner).name}.`,
+    `Category winners -> Player Vote: ${playerVoteWinnerName}, Similarity: ${similarityWinnerName}.`,
   )
   addLog(state, `Winner logic -> ${buildNeutralVotingExplanation(resolution, winner)}`)
   addLog(state, `${winner.name} wins the hand for ${totalPot}.`)
