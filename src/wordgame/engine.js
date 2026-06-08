@@ -66,6 +66,202 @@ function getPotTotal(state) {
   return state.players.reduce((total, player) => total + player.totalCommitted, 0)
 }
 
+function buildSidePots(state) {
+  const commitmentLevels = [
+    ...new Set(
+      state.players
+        .map((player) => player.totalCommitted)
+        .filter((amount) => amount > 0),
+    ),
+  ].sort((left, right) => left - right)
+
+  let previousLevel = 0
+
+  return commitmentLevels.map((level, index) => {
+    const contributionPerPlayer = level - previousLevel
+    const contributors = state.players.filter((player) => player.totalCommitted >= level)
+    const eligibleContenders = contributors.filter((player) => isContender(player))
+    previousLevel = level
+
+    return {
+      id: index + 1,
+      level,
+      contributionPerPlayer,
+      amount: contributionPerPlayer * contributors.length,
+      contributorIds: contributors.map((player) => player.id),
+      eligiblePlayerIds: eligibleContenders.map((player) => player.id),
+    }
+  })
+}
+
+function getPlayerNameById(state, playerId) {
+  return state.players.find((player) => player.id === playerId)?.name ?? 'Unknown'
+}
+
+function addPayoutToMap(state, payoutByPlayerId, playerId, amount) {
+  if (amount <= 0) {
+    return
+  }
+
+  const player = state.players.find((candidate) => candidate.id === playerId)
+
+  if (!player) {
+    throw new Error('Unable to pay chips to an unknown player.')
+  }
+
+  player.stack += amount
+  payoutByPlayerId.set(playerId, (payoutByPlayerId.get(playerId) ?? 0) + amount)
+}
+
+function reserveAmountFromPots(pots, amount, canReserveFromPot) {
+  let remaining = amount
+
+  for (let index = pots.length - 1; index >= 0 && remaining > 0; index -= 1) {
+    const pot = pots[index]
+
+    if (!canReserveFromPot(pot)) {
+      continue
+    }
+
+    const reserved = Math.min(pot.amount, remaining)
+    pot.amount -= reserved
+    pot.reservedAmount += reserved
+    remaining -= reserved
+  }
+
+  return amount - remaining
+}
+
+function reserveJudgePayoutFromPots(pots, judgePlayerId, judgeContribution, judgePayout) {
+  if (judgePlayerId === null || judgePayout <= 0) {
+    return
+  }
+
+  const reservedStake = reserveAmountFromPots(
+    pots,
+    Math.min(judgeContribution, judgePayout),
+    (pot) => pot.contributorIds.includes(judgePlayerId),
+  )
+  const bonusToReserve = judgePayout - reservedStake
+
+  if (bonusToReserve > 0) {
+    reserveAmountFromPots(pots, bonusToReserve, () => true)
+  }
+}
+
+function settlePotsByRanking(state, rankedPlayerIds, options = {}) {
+  const sidePots = buildSidePots(state).map((pot) => ({
+    ...pot,
+    originalAmount: pot.amount,
+    reservedAmount: 0,
+  }))
+  const payoutByPlayerId = new Map()
+  const sidePotAwards = []
+
+  const {
+    judgePlayerId = null,
+    judgeContribution = 0,
+    judgePayout = 0,
+  } = options
+
+  reserveJudgePayoutFromPots(sidePots, judgePlayerId, judgeContribution, judgePayout)
+
+  if (judgePlayerId !== null && judgePayout > 0) {
+    addPayoutToMap(state, payoutByPlayerId, judgePlayerId, judgePayout)
+  }
+
+  for (const pot of sidePots) {
+    if (pot.amount <= 0) {
+      sidePotAwards.push({
+        id: pot.id,
+        level: pot.level,
+        amount: 0,
+        originalAmount: pot.originalAmount,
+        reservedAmount: pot.reservedAmount,
+        winnerId: null,
+        winnerName: null,
+        eligiblePlayerIds: pot.eligiblePlayerIds,
+      })
+      continue
+    }
+
+    const winningPlayerId = rankedPlayerIds.find((playerId) => {
+      return pot.eligiblePlayerIds.includes(playerId)
+    })
+
+    if (winningPlayerId !== undefined) {
+      addPayoutToMap(state, payoutByPlayerId, winningPlayerId, pot.amount)
+      sidePotAwards.push({
+        id: pot.id,
+        level: pot.level,
+        amount: pot.amount,
+        originalAmount: pot.originalAmount,
+        reservedAmount: pot.reservedAmount,
+        winnerId: winningPlayerId,
+        winnerName: getPlayerNameById(state, winningPlayerId),
+        eligiblePlayerIds: pot.eligiblePlayerIds,
+      })
+      continue
+    }
+
+    const refundAmountByPlayer = Math.floor(pot.amount / pot.contributorIds.length)
+    let oddChipRemainder = pot.amount - refundAmountByPlayer * pot.contributorIds.length
+
+    for (const contributorId of pot.contributorIds) {
+      const refund = refundAmountByPlayer + (oddChipRemainder > 0 ? 1 : 0)
+      oddChipRemainder = Math.max(0, oddChipRemainder - 1)
+      addPayoutToMap(state, payoutByPlayerId, contributorId, refund)
+    }
+
+    sidePotAwards.push({
+      id: pot.id,
+      level: pot.level,
+      amount: pot.amount,
+      originalAmount: pot.originalAmount,
+      reservedAmount: pot.reservedAmount,
+      winnerId: null,
+      winnerName: 'Returned to contributors',
+      eligiblePlayerIds: pot.eligiblePlayerIds,
+    })
+  }
+
+  const payouts = Array.from(payoutByPlayerId.entries()).map(([playerId, amount]) => ({
+    playerId,
+    playerName: getPlayerNameById(state, playerId),
+    amount,
+  }))
+
+  return {
+    payouts,
+    payoutByPlayerId,
+    sidePots: sidePotAwards,
+  }
+}
+
+function logSidePotAwards(state, settlement) {
+  const sidePots = settlement.sidePots ?? []
+  const hasSidePot = sidePots.length > 1
+  const hasReservedJudgeChips = sidePots.some((pot) => pot.reservedAmount > 0)
+
+  if (!hasSidePot && !hasReservedJudgeChips) {
+    return
+  }
+
+  const summary = sidePots
+    .filter((pot) => pot.originalAmount > 0)
+    .map((pot) => {
+      const awardText =
+        pot.amount > 0 ? `${pot.amount} to ${pot.winnerName}` : 'fully reserved'
+      const reserveText =
+        pot.reservedAmount > 0 ? `, ${pot.reservedAmount} reserved` : ''
+
+      return `Pot ${pot.id}: ${awardText}${reserveText}`
+    })
+    .join('; ')
+
+  addLog(state, `Side pots -> ${summary}.`)
+}
+
 function addLog(state, message) {
   state.log.push(`[Hand ${state.handNumber}] ${message}`)
 
@@ -245,8 +441,8 @@ function settleUncontestedPot(state) {
     throw new Error('No contender available for uncontested pot resolution.')
   }
 
-  const potAmount = getPotTotal(state)
-  winner.stack += potAmount
+  const settlement = settlePotsByRanking(state, [winner.id])
+  const potAmount = settlement.payoutByPlayerId.get(winner.id) ?? 0
 
   state.showdown = {
     type: 'uncontested',
@@ -254,19 +450,15 @@ function settleUncontestedPot(state) {
     winnerName: winner.name,
     winnerWord: winner.holeWord,
     amount: potAmount,
-    payouts: [
-      {
-        playerId: winner.id,
-        playerName: winner.name,
-        amount: potAmount,
-      },
-    ],
+    payouts: settlement.payouts,
+    sidePots: settlement.sidePots,
   }
 
   state.handComplete = true
   state.phase = 'handComplete'
   state.currentPlayerIndex = null
 
+  logSidePotAwards(state, settlement)
   addLog(state, `${winner.name} wins ${potAmount} chips uncontested.`)
 
   return state
@@ -373,8 +565,11 @@ function resolveSimilarityDuel(state) {
     throw new Error('Unable to find final duel winner.')
   }
 
-  const potAmount = getPotTotal(state)
-  winner.stack += potAmount
+  const rankedPlayerIds = rankContenderIdsBy(state, contenderIds, (playerId) => {
+    return similarityByPlayerId.get(playerId) ?? Number.NEGATIVE_INFINITY
+  })
+  const settlement = settlePotsByRanking(state, rankedPlayerIds)
+  const potAmount = settlement.payoutByPlayerId.get(winner.id) ?? 0
 
   state.showdown = {
     type: 'similarityDuel',
@@ -397,13 +592,8 @@ function resolveSimilarityDuel(state) {
       reason: 'similarity-duel',
       payout: potAmount,
     },
-    payouts: [
-      {
-        playerId: winner.id,
-        playerName: winner.name,
-        amount: potAmount,
-      },
-    ],
+    payouts: settlement.payouts,
+    sidePots: settlement.sidePots,
   }
 
   addLog(
@@ -419,6 +609,7 @@ function resolveSimilarityDuel(state) {
     state,
     `Winner logic -> Final Duel uses the neutral judge word "${state.judgeWord}". ${winner.name} is closest by similarity.`,
   )
+  logSidePotAwards(state, settlement)
   addLog(state, `${winner.name} wins the hand for ${potAmount}.`)
 
   state.handComplete = true
@@ -1076,10 +1267,24 @@ function buildVotingResolution(state, playerVotes, judgeVote) {
     winnerReason = 'category-tie-similarity-tiebreak'
   }
 
+  const rankedByShowdownStrength = rankContenderIdsBy(state, contenderIds, (playerId) => {
+    const categoryWinCount = categoryWinsByPlayerId.get(playerId).length
+    const similarity = similarityByPlayerId.get(playerId) ?? Number.NEGATIVE_INFINITY
+    const votes = voteCountByPlayerId.get(playerId) ?? 0
+    const judgeEdge = playerId === judgeVoteWinner ? 0.0001 : 0
+
+    return categoryWinCount * 1000000 + similarity * 1000 + votes + judgeEdge
+  })
+  const rankedPlayerIds = [
+    winnerId,
+    ...rankedByShowdownStrength.filter((playerId) => playerId !== winnerId),
+  ]
+
   return {
     contenders,
     winnerId,
     winnerReason,
+    rankedPlayerIds,
     playerVoteWinner,
     judgeVoteWinner,
     similarityWinner,
@@ -1156,10 +1361,23 @@ function buildNeutralVotingResolution(state, playerVotes) {
         : 'neutral-clear-player-vote-majority'
   }
 
+  const rankedByNeutralStrength = rankContenderIdsBy(state, contenderIds, (playerId) => {
+    const majorityEdge = playerId === clearMajorityWinner ? 1000000 : 0
+    const similarity = similarityByPlayerId.get(playerId) ?? Number.NEGATIVE_INFINITY
+    const votes = voteCountByPlayerId.get(playerId) ?? 0
+
+    return majorityEdge + similarity * 1000 + votes
+  })
+  const rankedPlayerIds = [
+    winnerId,
+    ...rankedByNeutralStrength.filter((playerId) => playerId !== winnerId),
+  ]
+
   return {
     contenders,
     winnerId,
     winnerReason,
+    rankedPlayerIds,
     playerVoteWinner: clearMajorityWinner,
     voteLeader: playerVoteWinner,
     similarityWinner,
@@ -1278,8 +1496,8 @@ function resolveNeutralVoting(previousState, playerVotes) {
     throw new Error('Unable to find neutral showdown winner.')
   }
 
-  const totalPot = getPotTotal(state)
-  winner.stack += totalPot
+  const settlement = settlePotsByRanking(state, resolution.rankedPlayerIds)
+  const winnerPayout = settlement.payoutByPlayerId.get(winner.id) ?? 0
 
   state.showdown = {
     type: 'neutralVoting',
@@ -1304,15 +1522,10 @@ function resolveNeutralVoting(previousState, playerVotes) {
       word: winner.holeWord,
       reason: resolution.winnerReason,
       categoryWins: resolution.categoryWinsByPlayerId.get(winner.id),
-      payout: totalPot,
+      payout: winnerPayout,
     },
-    payouts: [
-      {
-        playerId: winner.id,
-        playerName: winner.name,
-        amount: totalPot,
-      },
-    ],
+    payouts: settlement.payouts,
+    sidePots: settlement.sidePots,
   }
 
   const playerVoteWinnerName =
@@ -1328,7 +1541,8 @@ function resolveNeutralVoting(previousState, playerVotes) {
     `Category winners -> Player Vote: ${playerVoteWinnerName}, Similarity: ${similarityWinnerName}.`,
   )
   addLog(state, `Winner logic -> ${buildNeutralVotingExplanation(resolution, winner)}`)
-  addLog(state, `${winner.name} wins the hand for ${totalPot}.`)
+  logSidePotAwards(state, settlement)
+  addLog(state, `${winner.name} wins the hand for ${winnerPayout}.`)
 
   state.handComplete = true
   state.phase = 'handComplete'
@@ -1370,12 +1584,12 @@ export function resolveShowdownVotes(previousState, payload) {
   const judgePayout = judgeAligned
     ? Math.min(totalPot, judgeContribution + judgeBonus)
     : 0
-  const winnerPayout = totalPot - judgePayout
-
-  winner.stack += winnerPayout
-  if (judgePayout > 0) {
-    judge.stack += judgePayout
-  }
+  const settlement = settlePotsByRanking(state, resolution.rankedPlayerIds, {
+    judgePlayerId: judge.id,
+    judgeContribution,
+    judgePayout,
+  })
+  const winnerPayout = settlement.payoutByPlayerId.get(winner.id) ?? 0
 
   state.showdown = {
     type: 'voting',
@@ -1412,22 +1626,8 @@ export function resolveShowdownVotes(previousState, payload) {
       categoryWins: resolution.categoryWinsByPlayerId.get(winner.id),
       payout: winnerPayout,
     },
-    payouts: [
-      {
-        playerId: winner.id,
-        playerName: winner.name,
-        amount: winnerPayout,
-      },
-      ...(judgePayout > 0
-        ? [
-            {
-              playerId: judge.id,
-              playerName: judge.name,
-              amount: judgePayout,
-            },
-          ]
-        : []),
-    ],
+    payouts: settlement.payouts,
+    sidePots: settlement.sidePots,
   }
 
   addLog(
@@ -1437,6 +1637,7 @@ export function resolveShowdownVotes(previousState, payload) {
 
   addLog(state, `Winner logic -> ${buildWinnerExplanation(resolution, winner)}`)
 
+  logSidePotAwards(state, settlement)
   addLog(state, `${winner.name} wins the hand for ${winnerPayout}.`)
 
   if (judgeAligned && judgePayout > 0) {

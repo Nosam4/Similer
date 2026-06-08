@@ -16,6 +16,36 @@ function HandCompletePanel({
   const getPlayerName = (playerId, fallback = 'No clear majority') => {
     return game.players.find((player) => player.id === playerId)?.name ?? fallback
   }
+  const renderSidePots = () => {
+    const sidePots = game.showdown?.sidePots ?? []
+    const shouldShowSidePots =
+      sidePots.length > 1 || sidePots.some((pot) => pot.reservedAmount > 0)
+
+    if (!shouldShowSidePots) {
+      return null
+    }
+
+    return sidePots
+      .filter((pot) => pot.originalAmount > 0)
+      .map((pot) => {
+        const awardText =
+          pot.amount > 0 ? `${pot.amount} -> ${pot.winnerName}` : 'fully reserved'
+        const reserveText =
+          pot.reservedAmount > 0 ? ` (${pot.reservedAmount} reserved for judge payout)` : ''
+
+        return (
+          <p key={`side-pot-${pot.id}`}>
+            Side Pot {pot.id}: {awardText}
+            {reserveText}
+          </p>
+        )
+      })
+  }
+  const renderPayouts = () => {
+    return (game.showdown?.payouts ?? []).map((payout) => (
+      <p key={payout.playerId}>Payout: {payout.playerName} +{payout.amount}</p>
+    ))
+  }
 
   return (
     <div
@@ -34,6 +64,8 @@ function HandCompletePanel({
           {game.showdown.winnerName} won uncontested for {game.showdown.amount}.
         </p>
       ) : null}
+      {game.showdown?.type === 'uncontested' ? renderSidePots() : null}
+      {game.showdown?.type === 'uncontested' ? renderPayouts() : null}
 
       {game.showdown?.type === 'voting' ? (
         <div className="showdown-grid">
@@ -54,9 +86,8 @@ function HandCompletePanel({
               {contender.categoryWins.join(', ') || 'none'}
             </p>
           ))}
-          {game.showdown.payouts.map((payout) => (
-            <p key={payout.playerId}>Payout: {payout.playerName} +{payout.amount}</p>
-          ))}
+          {renderSidePots()}
+          {renderPayouts()}
         </div>
       ) : null}
 
@@ -76,9 +107,8 @@ function HandCompletePanel({
               {formatScore(contender.similarity)}
             </p>
           ))}
-          {game.showdown.payouts.map((payout) => (
-            <p key={payout.playerId}>Payout: {payout.playerName} +{payout.amount}</p>
-          ))}
+          {renderSidePots()}
+          {renderPayouts()}
         </div>
       ) : null}
 
@@ -103,9 +133,8 @@ function HandCompletePanel({
               {contender.categoryWins.join(', ') || 'none'}
             </p>
           ))}
-          {game.showdown.payouts.map((payout) => (
-            <p key={payout.playerId}>Payout: {payout.playerName} +{payout.amount}</p>
-          ))}
+          {renderSidePots()}
+          {renderPayouts()}
         </div>
       ) : null}
 
