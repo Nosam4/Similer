@@ -297,7 +297,7 @@ function OnlineRoomPanel({
       {!isSupabaseConfigured ? null : !room ? (
         <div className="online-room-actions">
           <button type="button" disabled={booting || busy || !userId} onClick={handleCreateRoom}>
-            Create 8-Player Room
+            Create Room
           </button>
 
           <label>
