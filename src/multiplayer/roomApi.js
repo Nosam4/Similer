@@ -357,8 +357,9 @@ export async function fetchShowdownVotesForResolution({ roomId, handNumber }) {
   return response.data ?? []
 }
 
-export function subscribeToRoom({ roomId, onAnyChange }) {
+export function subscribeToRoom({ roomId, onAnyChange, onPrivateChange = null }) {
   const client = getSupabaseClient()
+  const handlePrivateChange = onPrivateChange ?? onAnyChange
   const channel = client
     .channel(`room-${roomId}`)
     .on(
@@ -399,7 +400,7 @@ export function subscribeToRoom({ roomId, onAnyChange }) {
         table: 'hand_words',
         filter: `room_id=eq.${roomId}`,
       },
-      onAnyChange,
+      handlePrivateChange,
     )
     .on(
       'postgres_changes',
@@ -409,7 +410,7 @@ export function subscribeToRoom({ roomId, onAnyChange }) {
         table: 'showdown_votes',
         filter: `room_id=eq.${roomId}`,
       },
-      onAnyChange,
+      handlePrivateChange,
     )
     .subscribe()
 

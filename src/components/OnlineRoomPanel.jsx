@@ -19,6 +19,7 @@ const MAX_ROOM_PLAYERS = 8
 function OnlineRoomPanel({
   onSessionChange = null,
   onStartOnlineGame = null,
+  onPrivateDataChange = null,
   onlineGameBusy = false,
 }) {
   const [userId, setUserId] = useState('')
@@ -111,6 +112,7 @@ function OnlineRoomPanel({
     const unsubscribe = subscribeToRoom({
       roomId: room.id,
       onAnyChange: refreshRoomState,
+      onPrivateChange: onPrivateDataChange,
     })
     const intervalId = window.setInterval(() => {
       refreshRoomState({ silent: true })
@@ -134,7 +136,7 @@ function OnlineRoomPanel({
       document.removeEventListener('visibilitychange', refreshWhenVisible)
       unsubscribe()
     }
-  }, [room?.id, refreshTick])
+  }, [onPrivateDataChange, room?.id, refreshTick])
 
   const myPlayer = useMemo(() => {
     if (!userId) {

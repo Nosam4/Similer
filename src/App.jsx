@@ -110,6 +110,7 @@ function App() {
   const [onlineWordsByPlayerId, setOnlineWordsByPlayerId] = useState({})
   const [onlineVoteStatusRows, setOnlineVoteStatusRows] = useState([])
   const [onlinePrivateDataKey, setOnlinePrivateDataKey] = useState('')
+  const [onlinePrivateRefreshTick, setOnlinePrivateRefreshTick] = useState(0)
   const [onlineGameBusy, setOnlineGameBusy] = useState(false)
   const [pulseTicks, setPulseTicks] = useState(INITIAL_PULSE_TICKS)
   const previousPhaseRef = useRef(null)
@@ -233,7 +234,7 @@ function App() {
   const userId = onlineSession?.userId ?? null
 
   useEffect(() => {
-    if (!roomId || !onlineGame?.handNumber || !onlineSession?.roomState) {
+    if (!roomId || !onlineGame?.handNumber || !roomStateVersion) {
       return undefined
     }
 
@@ -274,7 +275,13 @@ function App() {
     return () => {
       isCancelled = true
     }
-  }, [onlineGame?.handNumber, onlineGame?.phase, onlineSession?.roomState, roomId])
+  }, [
+    onlineGame?.handNumber,
+    onlineGame?.phase,
+    onlinePrivateRefreshTick,
+    roomId,
+    roomStateVersion,
+  ])
 
   const persistOnlineGame = useCallback(
     async (nextGame, nextStatus = null, options = {}) => {
@@ -656,6 +663,9 @@ function App() {
   const handleOnlineSessionChange = useCallback((nextSession) => {
     setOnlineSession(nextSession)
   }, [])
+  const handlePrivateDataChange = useCallback(() => {
+    setOnlinePrivateRefreshTick((previous) => previous + 1)
+  }, [])
 
   async function handleStartOnlineGame() {
     if (!onlineSession?.room?.id || !userId) {
@@ -783,6 +793,7 @@ function App() {
       <OnlineRoomPanel
         onSessionChange={handleOnlineSessionChange}
         onStartOnlineGame={handleStartOnlineGame}
+        onPrivateDataChange={handlePrivateDataChange}
         onlineGameBusy={onlineGameBusy}
       />
 
