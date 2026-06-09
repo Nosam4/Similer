@@ -27,7 +27,28 @@ import ShowdownVotingPanel from './components/ShowdownVotingPanel'
 import StatusRow from './components/StatusRow'
 import TableHeader from './components/TableHeader'
 import TurnPanel from './components/TurnPanel'
-import { saveRoomState, setRoomStatus } from './multiplayer/roomApi'
+import {
+  fetchAccessibleHandWords,
+  fetchShowdownVotesForResolution,
+  fetchShowdownVoteStatuses,
+  replaceHandWords,
+  revealHandWords,
+  revealJudgeWord,
+  saveRoomState,
+  setRoomStatus,
+  submitShowdownVote,
+} from './multiplayer/roomApi'
+import {
+  applyRevealedWordsToGame,
+  buildSubmittedPlayerVoteIds,
+  buildVotesPayload,
+  buildWordMap,
+  extractPrivateHandWords,
+  getPublicRevealPlayerIds,
+  hasSubmittedJudgeVote,
+  hydrateGameWithWords,
+  sanitizeGameForRoomState,
+} from './multiplayer/privateGameState'
 
 const PLAYER_NAMES = ['North', 'East', 'South', 'West']
 const STARTING_STACK = 400
@@ -63,42 +84,6 @@ function getOnlinePlayerNames(players) {
   return names.length >= 3 ? names : PLAYER_NAMES
 }
 
-function getOnlineVotesForGame(game) {
-  const onlineVotes = game.onlineVotes
-
-  if (!onlineVotes || onlineVotes.handNumber !== game.handNumber) {
-    return {
-      playerVotes: {},
-      judgeVote: '',
-    }
-  }
-
-  return {
-    playerVotes:
-      onlineVotes.playerVotes && typeof onlineVotes.playerVotes === 'object'
-        ? onlineVotes.playerVotes
-        : {},
-    judgeVote: onlineVotes.judgeVote ? String(onlineVotes.judgeVote) : '',
-  }
-}
-
-function withOnlineVotes(game, onlineVotes) {
-  return {
-    ...game,
-    onlineVotes: {
-      handNumber: game.handNumber,
-      playerVotes: onlineVotes.playerVotes,
-      judgeVote: onlineVotes.judgeVote,
-    },
-  }
-}
-
-function withoutOnlineVotes(game) {
-  const { onlineVotes, ...rest } = game
-  void onlineVotes
-  return rest
-}
-
 function getRestartPlayerNames(game, onlineSession) {
   if (onlineSession?.players?.length >= 3) {
     return getOnlinePlayerNames(onlineSession.players)
@@ -122,6 +107,9 @@ function App() {
   const [playerVotes, setPlayerVotes] = useState({})
   const [judgeVote, setJudgeVote] = useState('')
   const [onlineSession, setOnlineSession] = useState(null)
+  const [onlineWordsByPlayerId, setOnlineWordsByPlayerId] = useState({})
+  const [onlineVoteStatusRows, setOnlineVoteStatusRows] = useState([])
+  const [onlinePrivateDataKey, setOnlinePrivateDataKey] = useState('')
   const [onlineGameBusy, setOnlineGameBusy] = useState(false)
   const [pulseTicks, setPulseTicks] = useState(INITIAL_PULSE_TICKS)
   const previousPhaseRef = useRef(null)
@@ -130,9 +118,22 @@ function App() {
     const candidate = onlineSession?.roomState?.state_json
     return isWordGameState(candidate) ? candidate : null
   }, [onlineSession?.roomState?.state_json])
+  const onlinePrivateKey =
+    onlineSession?.room?.id && onlineGame?.handNumber
+      ? `${onlineSession.room.id}:${onlineGame.handNumber}`
+      : ''
+  const activeOnlineWordsByPlayerId = useMemo(() => {
+    return onlinePrivateDataKey === onlinePrivateKey ? onlineWordsByPlayerId : {}
+  }, [onlinePrivateDataKey, onlinePrivateKey, onlineWordsByPlayerId])
+  const activeOnlineVoteStatusRows = useMemo(() => {
+    return onlinePrivateDataKey === onlinePrivateKey ? onlineVoteStatusRows : []
+  }, [onlinePrivateDataKey, onlinePrivateKey, onlineVoteStatusRows])
+  const hydratedOnlineGame = useMemo(() => {
+    return hydrateGameWithWords(onlineGame, activeOnlineWordsByPlayerId)
+  }, [activeOnlineWordsByPlayerId, onlineGame])
 
-  const isOnlinePlaying = Boolean(onlineSession?.room?.status === 'playing' && onlineGame)
-  const game = isOnlinePlaying ? onlineGame : localGame
+  const isOnlinePlaying = Boolean(onlineSession?.room?.status === 'playing' && hydratedOnlineGame)
+  const game = isOnlinePlaying ? hydratedOnlineGame : localGame
 
   const actor = getCurrentActor(game)
   const legal = getLegalActions(game)
@@ -145,7 +146,9 @@ function App() {
   const judgeWord = game.judgeWord ?? judge?.holeWord ?? null
   const isFinalDuel = game.showdownMode === 'similarityDuel'
   const isNeutralVoting = game.showdownMode === 'neutralVoting'
-  const onlineVotes = useMemo(() => getOnlineVotesForGame(game), [game])
+  const onlineSubmittedPlayerVoteIds = useMemo(() => {
+    return buildSubmittedPlayerVoteIds(activeOnlineVoteStatusRows)
+  }, [activeOnlineVoteStatusRows])
 
   const similarityRows = useMemo(() => {
     if (!judgeWord || !isShowdownVoting) {
@@ -179,62 +182,124 @@ function App() {
 
   const effectivePlayerVotes =
     isOnlinePlaying
-      ? onlineVotes.playerVotes
+      ? {}
       : Object.keys(playerVotes).length > 0
         ? playerVotes
         : defaultPlayerVotes
   const effectiveJudgeVote =
     judge
       ? isOnlinePlaying
-        ? onlineVotes.judgeVote
+        ? ''
         : judgeVote || (contenders.length > 0 ? String(contenders[0].id) : '')
       : ''
-  const submittedPlayerVoteCount = contenders.filter((voter) => {
-    const value = effectivePlayerVotes[voter.id]
-    const targetId = Number(value)
+  const submittedPlayerVoteCount = isOnlinePlaying
+    ? onlineSubmittedPlayerVoteIds.length
+    : contenders.filter((voter) => {
+        const value = effectivePlayerVotes[voter.id]
+        const targetId = Number(value)
 
-    return (
-      value !== undefined &&
-      value !== '' &&
-      targetId !== voter.id &&
-      contenders.some((target) => target.id === targetId)
-    )
-  }).length
-  const judgeVoteSubmitted = !judge || effectiveJudgeVote !== ''
+        return (
+          value !== undefined &&
+          value !== '' &&
+          targetId !== voter.id &&
+          contenders.some((target) => target.id === targetId)
+        )
+      }).length
+  const judgeVoteSubmitted = isOnlinePlaying
+    ? !judge || hasSubmittedJudgeVote(activeOnlineVoteStatusRows)
+    : !judge || effectiveJudgeVote !== ''
 
   const canResolveVotes =
     isShowdownVoting &&
     contenders.length > 1 &&
-    contenders.every((voter) => {
-      const value = effectivePlayerVotes[voter.id]
-      const targetId = Number(value)
+    (isOnlinePlaying
+      ? submittedPlayerVoteCount === contenders.length && judgeVoteSubmitted
+      : contenders.every((voter) => {
+          const value = effectivePlayerVotes[voter.id]
+          const targetId = Number(value)
 
-      return (
-        value !== undefined &&
-        value !== '' &&
-        targetId !== voter.id &&
-        contenders.some((target) => target.id === targetId)
-      )
-    }) &&
-    (!judge || effectiveJudgeVote !== '')
+          return (
+            value !== undefined &&
+            value !== '' &&
+            targetId !== voter.id &&
+            contenders.some((target) => target.id === targetId)
+          )
+        }) &&
+        (!judge || effectiveJudgeVote !== ''))
 
   const myOnlineSeatIndex = onlineSession?.myPlayer?.seat_index ?? null
   const roomId = onlineSession?.room?.id ?? null
   const roomStateVersion = onlineSession?.roomState?.version ?? null
   const userId = onlineSession?.userId ?? null
 
+  useEffect(() => {
+    if (!roomId || !onlineGame?.handNumber || !onlineSession?.roomState) {
+      return undefined
+    }
+
+    let isCancelled = false
+    const privateDataKey = `${roomId}:${onlineGame.handNumber}`
+
+    async function refreshPrivateOnlineData() {
+      try {
+        const [wordRows, voteRows] = await Promise.all([
+          fetchAccessibleHandWords({
+            roomId,
+            handNumber: onlineGame.handNumber,
+          }),
+          onlineGame.phase === 'showdownVoting'
+            ? fetchShowdownVoteStatuses({
+                roomId,
+                handNumber: onlineGame.handNumber,
+              })
+            : Promise.resolve([]),
+        ])
+
+        if (isCancelled) {
+          return
+        }
+
+        setOnlineWordsByPlayerId(buildWordMap(wordRows))
+        setOnlineVoteStatusRows(voteRows)
+        setOnlinePrivateDataKey(privateDataKey)
+      } catch (error) {
+        if (!isCancelled) {
+          setErrorText(error instanceof Error ? error.message : 'Unable to refresh private game data.')
+        }
+      }
+    }
+
+    refreshPrivateOnlineData()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [onlineGame?.handNumber, onlineGame?.phase, onlineSession?.roomState, roomId])
+
   const persistOnlineGame = useCallback(
-    async (nextGame, nextStatus = null) => {
+    async (nextGame, nextStatus = null, options = {}) => {
       if (!roomId || !userId) {
         throw new Error('No active room is connected.')
       }
 
+      const { replacePrivateWords = false, revealPublicWords = false } = options
+
+      let stateToSave = sanitizeGameForRoomState(nextGame)
       const savedRoomState = await saveRoomState({
         roomId,
-        nextState: nextGame,
+        nextState: stateToSave,
         updatedByUserId: userId,
         expectedVersion: roomStateVersion,
       })
+      let finalRoomState = savedRoomState
+
+      if (replacePrivateWords) {
+        await replaceHandWords({
+          roomId,
+          handNumber: nextGame.handNumber,
+          words: extractPrivateHandWords(nextGame),
+        })
+      }
 
       if (nextStatus) {
         await setRoomStatus({
@@ -244,6 +309,56 @@ function App() {
         })
       }
 
+      if (revealPublicWords) {
+        const revealedRows = []
+        const savedGame = savedRoomState.state_json
+        const savedPlayers = savedGame?.players ?? []
+        const savedJudge = savedPlayers.find((player) => player.id === savedGame?.judgePlayerId)
+
+        if (
+          savedGame?.judgePlayerId !== null &&
+          savedGame?.judgePlayerId !== undefined &&
+          (!savedGame.judgeWord || !savedJudge?.holeWord)
+        ) {
+          const judgeRows = await revealJudgeWord({
+            roomId,
+            handNumber: savedGame.handNumber,
+            playerId: savedGame.judgePlayerId,
+          })
+          revealedRows.push(...judgeRows)
+        }
+
+        const revealPlayerIds = getPublicRevealPlayerIds(savedGame).filter((playerId) => {
+          return !savedPlayers.find((player) => player.id === playerId)?.holeWord
+        })
+
+        if (revealPlayerIds.length > 0) {
+          const playerRows = await revealHandWords({
+            roomId,
+            handNumber: savedGame.handNumber,
+            playerIds: revealPlayerIds,
+          })
+          revealedRows.push(...playerRows)
+        }
+
+        if (revealedRows.length > 0) {
+          stateToSave = sanitizeGameForRoomState(
+            applyRevealedWordsToGame(nextGame, revealedRows),
+          )
+          finalRoomState = await saveRoomState({
+            roomId,
+            nextState: stateToSave,
+            updatedByUserId: userId,
+            expectedVersion: savedRoomState.version,
+          })
+          setOnlineWordsByPlayerId((previous) => ({
+            ...previous,
+            ...buildWordMap(revealedRows),
+          }))
+          setOnlinePrivateDataKey(`${roomId}:${savedGame.handNumber}`)
+        }
+      }
+
       setOnlineSession((previous) => {
         if (!previous) {
           return previous
@@ -251,7 +366,7 @@ function App() {
 
         return {
           ...previous,
-          roomState: savedRoomState,
+          roomState: finalRoomState,
           room: nextStatus
             ? {
                 ...previous.room,
@@ -310,7 +425,7 @@ function App() {
       )
       if (isOnlinePlaying) {
         setOnlineGameBusy(true)
-        await persistOnlineGame(nextGame)
+        await persistOnlineGame(nextGame, null, { revealPublicWords: true })
       } else {
         setLocalGame(nextGame)
       }
@@ -330,11 +445,14 @@ function App() {
   }
 
   async function beginNextHand() {
-    const nextGame = withoutOnlineVotes(startNextHand(game))
+    const nextGame = startNextHand(game)
     try {
       if (isOnlinePlaying) {
         setOnlineGameBusy(true)
-        await persistOnlineGame(nextGame)
+        await persistOnlineGame(nextGame, null, {
+          replacePrivateWords: true,
+          revealPublicWords: true,
+        })
       } else {
         setLocalGame(nextGame)
       }
@@ -361,7 +479,10 @@ function App() {
     try {
       if (isOnlinePlaying) {
         setOnlineGameBusy(true)
-        await persistOnlineGame(nextGame)
+        await persistOnlineGame(nextGame, null, {
+          replacePrivateWords: true,
+          revealPublicWords: true,
+        })
       } else {
         setLocalGame(nextGame)
       }
@@ -384,13 +505,26 @@ function App() {
         return
       }
 
-      const nextGame = withoutOnlineVotes(resolveShowdownVotes(game, {
-        playerVotes: effectivePlayerVotes,
-        judgeVote: judge ? Number(effectiveJudgeVote) : null,
-      }))
+      let playerVotesForResolution = effectivePlayerVotes
+      let judgeVoteForResolution = judge ? Number(effectiveJudgeVote) : null
+
+      if (isOnlinePlaying) {
+        const voteRows = await fetchShowdownVotesForResolution({
+          roomId,
+          handNumber: game.handNumber,
+        })
+        const privateVotes = buildVotesPayload(voteRows)
+        playerVotesForResolution = privateVotes.playerVotes
+        judgeVoteForResolution = judge ? Number(privateVotes.judgeVote) : null
+      }
+
+      const nextGame = resolveShowdownVotes(game, {
+        playerVotes: playerVotesForResolution,
+        judgeVote: judgeVoteForResolution,
+      })
       if (isOnlinePlaying) {
         setOnlineGameBusy(true)
-        await persistOnlineGame(nextGame)
+        await persistOnlineGame(nextGame, null, { revealPublicWords: true })
       } else {
         setLocalGame(nextGame)
       }
@@ -404,10 +538,10 @@ function App() {
 
   async function completeDebate() {
     try {
-      const nextGame = withoutOnlineVotes(completeDebateStage(game))
+      const nextGame = completeDebateStage(game)
       if (isOnlinePlaying) {
         setOnlineGameBusy(true)
-        await persistOnlineGame(nextGame)
+        await persistOnlineGame(nextGame, null, { revealPublicWords: true })
       } else {
         setLocalGame(nextGame)
       }
@@ -447,15 +581,28 @@ function App() {
 
     try {
       setOnlineGameBusy(true)
-      const nextVotes = {
-        playerVotes: {
-          ...onlineVotes.playerVotes,
-          [voterId]: String(targetId),
-        },
-        judgeVote: onlineVotes.judgeVote,
-      }
+      await submitShowdownVote({
+        roomId,
+        handNumber: game.handNumber,
+        voterPlayerId: voterId,
+        voteType: 'player',
+        targetPlayerId: targetId,
+      })
+      setOnlineVoteStatusRows((previous) => {
+        const filtered = previous.filter((row) => {
+          return !(row.vote_type === 'player' && Number(row.voter_player_id) === voterId)
+        })
 
-      await persistOnlineGame(withOnlineVotes(game, nextVotes))
+        return [
+          ...filtered,
+          {
+            vote_type: 'player',
+            voter_player_id: voterId,
+            submitted: true,
+          },
+        ]
+      })
+      setOnlinePrivateDataKey(`${roomId}:${game.handNumber}`)
       setErrorText('')
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Unable to submit player vote.')
@@ -478,12 +625,26 @@ function App() {
 
     try {
       setOnlineGameBusy(true)
-      const nextVotes = {
-        playerVotes: onlineVotes.playerVotes,
-        judgeVote: String(targetId),
-      }
+      await submitShowdownVote({
+        roomId,
+        handNumber: game.handNumber,
+        voterPlayerId: myOnlineSeatIndex,
+        voteType: 'judge',
+        targetPlayerId: targetId,
+      })
+      setOnlineVoteStatusRows((previous) => {
+        const filtered = previous.filter((row) => row.vote_type !== 'judge')
 
-      await persistOnlineGame(withOnlineVotes(game, nextVotes))
+        return [
+          ...filtered,
+          {
+            vote_type: 'judge',
+            voter_player_id: myOnlineSeatIndex,
+            submitted: true,
+          },
+        ]
+      })
+      setOnlinePrivateDataKey(`${roomId}:${game.handNumber}`)
       setErrorText('')
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Unable to submit judge vote.')
@@ -517,32 +678,9 @@ function App() {
         bigBlind: BIG_BLIND,
       })
 
-      const savedRoomState = await saveRoomState({
-        roomId: onlineSession.room.id,
-        nextState: initialSharedGame,
-        updatedByUserId: userId,
-        expectedVersion: onlineSession.roomState?.version ?? null,
-      })
-
-      await setRoomStatus({
-        roomId: onlineSession.room.id,
-        hostUserId: userId,
-        status: 'playing',
-      })
-
-      setOnlineSession((previous) => {
-        if (!previous) {
-          return previous
-        }
-
-        return {
-          ...previous,
-          roomState: savedRoomState,
-          room: {
-            ...previous.room,
-            status: 'playing',
-          },
-        }
+      await persistOnlineGame(initialSharedGame, 'playing', {
+        replacePrivateWords: true,
+        revealPublicWords: true,
       })
 
       setErrorText('')
@@ -573,8 +711,8 @@ function App() {
     judge?.id === myOnlineSeatIndex
   const isMyTurnOnline = isOnlinePlaying && actor && actor.id === myOnlineSeatIndex
   const onlinePlayerVoteValue =
-    playerVotes[myOnlineSeatIndex] ?? onlineVotes.playerVotes[myOnlineSeatIndex] ?? ''
-  const onlineJudgeVoteValue = judgeVote || onlineVotes.judgeVote || ''
+    myOnlineSeatIndex === null ? '' : playerVotes[myOnlineSeatIndex] ?? ''
+  const onlineJudgeVoteValue = judgeVote
   const effectiveRevealByPlayerId = useMemo(() => {
     if (!isOnlinePlaying || myOnlineSeatIndex === null) {
       return revealByPlayerId
@@ -717,7 +855,7 @@ function App() {
             pulseTick={pulseTicks.showdownPanel}
             isOnlinePlaying={isOnlinePlaying}
             myPlayerId={myOnlineSeatIndex}
-            submittedPlayerVotes={onlineVotes.playerVotes}
+            submittedPlayerVoteIds={onlineSubmittedPlayerVoteIds}
             submittedPlayerVoteCount={submittedPlayerVoteCount}
             judgeVoteSubmitted={judgeVoteSubmitted}
             usesJudgeVote={Boolean(judge)}

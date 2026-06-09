@@ -15,7 +15,7 @@ function ShowdownVotingPanel({
   pulseTick = 0,
   isOnlinePlaying = false,
   myPlayerId = null,
-  submittedPlayerVotes = {},
+  submittedPlayerVoteIds = [],
   submittedPlayerVoteCount = 0,
   judgeVoteSubmitted = false,
   usesJudgeVote = true,
@@ -34,14 +34,11 @@ function ShowdownVotingPanel({
     : []
   const isJudge = judge?.id === myPlayerId
   const isValidSubmittedPlayerVote = (voter) => {
-    const voteTarget = submittedPlayerVotes[voter.id]
+    if (isOnlinePlaying) {
+      return submittedPlayerVoteIds.includes(voter.id)
+    }
 
-    return (
-      voteTarget !== undefined &&
-      voteTarget !== '' &&
-      Number(voteTarget) !== voter.id &&
-      contenders.some((target) => target.id === Number(voteTarget))
-    )
+    return false
   }
   const myPlayerVoteSubmitted =
     myContender && isValidSubmittedPlayerVote(myContender)

@@ -249,6 +249,114 @@ export async function saveRoomState({
   return response.data
 }
 
+export async function replaceHandWords({ roomId, handNumber, words }) {
+  const client = getSupabaseClient()
+  const response = await client.rpc('replace_hand_words', {
+    p_room_id: roomId,
+    p_hand_number: handNumber,
+    p_words: words,
+  })
+
+  if (response.error) {
+    throw new Error(response.error.message)
+  }
+}
+
+export async function fetchAccessibleHandWords({ roomId, handNumber }) {
+  const client = getSupabaseClient()
+  const response = await client
+    .from('hand_words')
+    .select('player_id, word, is_revealed')
+    .eq('room_id', roomId)
+    .eq('hand_number', handNumber)
+    .order('player_id', { ascending: true })
+
+  if (response.error) {
+    throw new Error(response.error.message)
+  }
+
+  return response.data ?? []
+}
+
+export async function revealJudgeWord({ roomId, handNumber, playerId }) {
+  const client = getSupabaseClient()
+  const response = await client.rpc('reveal_judge_word', {
+    p_room_id: roomId,
+    p_hand_number: handNumber,
+    p_player_id: playerId,
+  })
+
+  if (response.error) {
+    throw new Error(response.error.message)
+  }
+
+  return response.data ?? []
+}
+
+export async function revealHandWords({ roomId, handNumber, playerIds = null }) {
+  const client = getSupabaseClient()
+  const response = await client.rpc('reveal_hand_words', {
+    p_room_id: roomId,
+    p_hand_number: handNumber,
+    p_player_ids: playerIds,
+  })
+
+  if (response.error) {
+    throw new Error(response.error.message)
+  }
+
+  return response.data ?? []
+}
+
+export async function submitShowdownVote({
+  roomId,
+  handNumber,
+  voterPlayerId,
+  voteType,
+  targetPlayerId,
+}) {
+  const client = getSupabaseClient()
+  const response = await client.rpc('submit_showdown_vote', {
+    p_room_id: roomId,
+    p_hand_number: handNumber,
+    p_voter_player_id: voterPlayerId,
+    p_vote_type: voteType,
+    p_target_player_id: targetPlayerId,
+  })
+
+  if (response.error) {
+    throw new Error(response.error.message)
+  }
+}
+
+export async function fetchShowdownVoteStatuses({ roomId, handNumber }) {
+  const client = getSupabaseClient()
+  const response = await client.rpc('get_showdown_vote_statuses', {
+    p_room_id: roomId,
+    p_hand_number: handNumber,
+  })
+
+  if (response.error) {
+    throw new Error(response.error.message)
+  }
+
+  return response.data ?? []
+}
+
+export async function fetchShowdownVotesForResolution({ roomId, handNumber }) {
+  const client = getSupabaseClient()
+  const response = await client.rpc('get_showdown_votes_for_resolution', {
+    p_room_id: roomId,
+    p_hand_number: handNumber,
+  })
+
+  if (response.error) {
+    throw new Error(response.error.message)
+  }
+
+  return response.data ?? []
+}
+
 export function subscribeToRoom({ roomId, onAnyChange }) {
   const client = getSupabaseClient()
   const channel = client
@@ -279,6 +387,26 @@ export function subscribeToRoom({ roomId, onAnyChange }) {
         event: '*',
         schema: 'public',
         table: 'room_states',
+        filter: `room_id=eq.${roomId}`,
+      },
+      onAnyChange,
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'hand_words',
+        filter: `room_id=eq.${roomId}`,
+      },
+      onAnyChange,
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'showdown_votes',
         filter: `room_id=eq.${roomId}`,
       },
       onAnyChange,
