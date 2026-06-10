@@ -14,7 +14,8 @@ const CATEGORY_LABELS = {
   similarity: 'Similarity',
 }
 
-const JUDGE_TAX_RATE = 0.2
+const ACTIVE_JUDGE_TAX_RATE = 0.2
+const FOLDED_JUDGE_TAX_RATE = 0.1
 
 const WORDS = matrixData.words
 const SCORES = matrixData.scores
@@ -146,8 +147,22 @@ function reserveJudgePayoutFromPots(pots, judgePlayerId, judgeStakeRefund, judge
   )
 
   if (judgeBonus > 0) {
-    reserveAmountFromPots(pots, judgeBonus, () => true)
+    reserveAmountFromPots(
+      pots,
+      judgeBonus,
+      (pot) => pot.contributorIds.includes(judgePlayerId),
+    )
   }
+}
+
+function getJudgeCoveredPotTotal(state, judgePlayerId) {
+  if (judgePlayerId === null || judgePlayerId === undefined) {
+    return 0
+  }
+
+  return buildSidePots(state)
+    .filter((pot) => pot.contributorIds.includes(judgePlayerId))
+    .reduce((total, pot) => total + pot.amount, 0)
 }
 
 function chooseMainPotWinnerId(pot, rankedPlayerIds) {
@@ -576,7 +591,7 @@ function settleUncontestedPot(state) {
           contribution: judge.totalCommitted,
           stakeRefund: judgeStakeRefund,
           bonus: 0,
-          taxRate: JUDGE_TAX_RATE,
+          taxRate: judge.folded ? FOLDED_JUDGE_TAX_RATE : ACTIVE_JUDGE_TAX_RATE,
           payout: judgeStakeRefund,
           wasFolded: judge.folded,
         }
@@ -900,7 +915,7 @@ function startPlayerJudgePhase(state, judgeIndex, reason = null) {
 
   addLog(
     state,
-    `${judge.name} becomes the judge. Judge word: "${state.judgeWord}". Judge contributions are held in escrow; active judges receive a stake refund when the hand ends, and correct judges can earn the Judge Tax. The judge does not act in postflop betting.`,
+    `${judge.name} becomes the judge. Judge word: "${state.judgeWord}". Active judges receive a stake refund when the hand ends; correct active judges can earn 20% Judge Tax from covered pot layers, while correct folded judges can earn 10% without a stake refund. Judges cannot tax side pots above their committed stake.`,
   )
   if (reason) {
     addLog(state, reason)
@@ -1717,14 +1732,15 @@ export function resolveShowdownVotes(previousState, payload) {
     throw new Error('Unable to find showdown winner.')
   }
 
-  const totalPot = getPotTotal(state)
   const judgeContribution = judge.totalCommitted
   const judgeAligned = resolution.judgeVoteWinner === winner.id
   const judgeWasFolded = judge.folded
   const judgeStakeRefund = judgeWasFolded ? 0 : judgeContribution
-  const maxJudgeBonus = Math.max(0, totalPot - judgeStakeRefund)
+  const judgeTaxRate = judgeWasFolded ? FOLDED_JUDGE_TAX_RATE : ACTIVE_JUDGE_TAX_RATE
+  const judgeCoveredPotTotal = getJudgeCoveredPotTotal(state, judge.id)
+  const maxJudgeBonus = Math.max(0, judgeCoveredPotTotal - judgeStakeRefund)
   const judgeBonus = judgeAligned
-    ? Math.min(Math.floor(totalPot * JUDGE_TAX_RATE), maxJudgeBonus)
+    ? Math.min(Math.floor(judgeCoveredPotTotal * judgeTaxRate), maxJudgeBonus)
     : 0
   const judgePayout = judgeStakeRefund + judgeBonus
   const settlement = settlePotsByRanking(state, resolution.rankedPlayerIds, {
@@ -1746,7 +1762,8 @@ export function resolveShowdownVotes(previousState, payload) {
       contribution: judgeContribution,
       stakeRefund: judgeStakeRefund,
       bonus: judgeBonus,
-      taxRate: JUDGE_TAX_RATE,
+      taxRate: judgeTaxRate,
+      taxablePot: judgeCoveredPotTotal,
       payout: judgePayout,
       wasFolded: judgeWasFolded,
     },
@@ -1787,16 +1804,23 @@ export function resolveShowdownVotes(previousState, payload) {
   logSidePotAwards(state, settlement)
   addLog(state, `${winner.name} wins the hand for ${winnerPayout}.`)
 
-  if (judgeAligned && judgePayout > 0) {
+  if (judgeAligned) {
     if (judgeWasFolded) {
-      addLog(
-        state,
-        `${judge.name} selected the winner and receives Judge Tax ${judgeBonus}; folded stake is not refunded.`,
-      )
+      if (judgeBonus > 0) {
+        addLog(
+          state,
+          `${judge.name} selected the winner and receives folded Judge Tax ${judgeBonus} from Judge-covered pot layers (${Math.round(judgeTaxRate * 100)}% of ${judgeCoveredPotTotal}); folded stake is not refunded.`,
+        )
+      } else {
+        addLog(
+          state,
+          `${judge.name} selected the winner, but no folded Judge Tax is available from covered pot layers; folded stake is not refunded.`,
+        )
+      }
     } else {
       addLog(
         state,
-        `${judge.name} selected the winner and receives ${judgePayout} (stake refund ${judgeStakeRefund} + Judge Tax ${judgeBonus}).`,
+        `${judge.name} selected the winner and receives ${judgePayout} (stake refund ${judgeStakeRefund} + Judge Tax ${judgeBonus} from Judge-covered pot layers).`,
       )
     }
   } else if (!judgeWasFolded && judgeStakeRefund > 0) {
