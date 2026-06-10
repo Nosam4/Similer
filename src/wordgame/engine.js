@@ -272,6 +272,28 @@ function addLog(state, message) {
   }
 }
 
+function markTableCompleteIfOnlyOnePlayerHasChips(state) {
+  if (state.tableComplete) {
+    return
+  }
+
+  const playersWithChips = countPlayersWithChips(state.players)
+
+  if (playersWithChips >= 2) {
+    return
+  }
+
+  state.tableComplete = true
+
+  const winner = state.players.find((player) => player.stack > 0)
+
+  if (winner) {
+    addLog(state, `${winner.name} is the only player with chips left.`)
+  } else {
+    addLog(state, 'No players have chips left.')
+  }
+}
+
 function commitChips(player, amount) {
   const committed = Math.max(0, Math.min(amount, player.stack))
 
@@ -487,6 +509,7 @@ function settleUncontestedPot(state) {
     )
   }
   addLog(state, `${winner.name} wins ${potAmount} chips uncontested.`)
+  markTableCompleteIfOnlyOnePlayerHasChips(state)
 
   return state
 }
@@ -642,6 +665,7 @@ function resolveSimilarityDuel(state) {
   state.handComplete = true
   state.phase = 'handComplete'
   state.currentPlayerIndex = null
+  markTableCompleteIfOnlyOnePlayerHasChips(state)
 
   return state
 }
@@ -1574,6 +1598,7 @@ function resolveNeutralVoting(previousState, playerVotes) {
   state.handComplete = true
   state.phase = 'handComplete'
   state.currentPlayerIndex = null
+  markTableCompleteIfOnlyOnePlayerHasChips(state)
 
   return state
 }
@@ -1698,6 +1723,7 @@ export function resolveShowdownVotes(previousState, payload) {
   state.handComplete = true
   state.phase = 'handComplete'
   state.currentPlayerIndex = null
+  markTableCompleteIfOnlyOnePlayerHasChips(state)
 
   return state
 }
