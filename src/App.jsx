@@ -123,7 +123,13 @@ function App() {
     return hydrateGameWithWords(onlineGame, activeOnlineWordsByPlayerId)
   }, [activeOnlineWordsByPlayerId, onlineGame])
 
+  const isOnlineRoomConnected = Boolean(onlineSession?.room)
   const isOnlinePlaying = Boolean(onlineSession?.room?.status === 'playing' && hydratedOnlineGame)
+  const shouldShowGameTable = !isOnlineRoomConnected || isOnlinePlaying
+  const onlineWaitingCopy =
+    onlineSession?.room?.status === 'playing'
+      ? 'Loading the online game state. Players should wait here while the room syncs.'
+      : 'Online room is waiting. Mark ready, wait for seats to fill, and start the online game from the room controls.'
   const game = isOnlinePlaying ? hydratedOnlineGame : localGame
 
   const actor = getCurrentActor(game)
@@ -713,6 +719,16 @@ function App() {
         onlineGameBusy={onlineGameBusy}
       />
 
+      {!shouldShowGameTable ? (
+        <section className="controls">
+          <div className="notice">
+            <p>{onlineWaitingCopy}</p>
+          </div>
+
+          {visibleErrorText ? <p className="error-text">{visibleErrorText}</p> : null}
+        </section>
+      ) : (
+        <>
       <TableHeader />
 
       <StatusRow
@@ -823,6 +839,8 @@ function App() {
       </section>
 
       <ActionLogPanel log={game.log} />
+        </>
+      )}
     </main>
   )
 }

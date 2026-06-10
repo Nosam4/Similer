@@ -169,7 +169,24 @@ export async function invokeGameCommand({ roomId, command, payload = {} }) {
   })
 
   if (response.error) {
-    throw new Error(response.error.message)
+    const context = response.error.context
+    let message = response.error.message
+
+    if (context && typeof context.clone === 'function') {
+      try {
+        const errorBody = await context.clone().json()
+        message = errorBody?.error ?? errorBody?.message ?? message
+      } catch {
+        try {
+          const errorText = await context.clone().text()
+          message = errorText || message
+        } catch {
+          // Keep the Supabase client message if the response body cannot be read.
+        }
+      }
+    }
+
+    throw new Error(message)
   }
 
   if (response.data?.error) {
