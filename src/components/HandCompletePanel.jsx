@@ -16,6 +16,28 @@ function HandCompletePanel({
   const getPlayerName = (playerId, fallback = 'No clear majority') => {
     return game.players.find((player) => player.id === playerId)?.name ?? fallback
   }
+  const getPotAwardRuleText = (pot) => {
+    if (pot.awardRule === 'main-showdown') {
+      return ' by main showdown result'
+    }
+
+    if (pot.awardRule === 'side-pot-similarity') {
+      const scoreText = Number.isFinite(pot.winningSimilarity)
+        ? ` (${formatScore(pot.winningSimilarity)})`
+        : ''
+      return ` by side-pot similarity${scoreText}`
+    }
+
+    if (pot.awardRule === 'only-eligible') {
+      return ' as the only eligible contender'
+    }
+
+    if (pot.awardRule === 'showdown-fallback') {
+      return ' by showdown fallback'
+    }
+
+    return ''
+  }
   const renderSidePots = () => {
     const sidePots = game.showdown?.sidePots ?? []
     const shouldShowSidePots =
@@ -29,7 +51,9 @@ function HandCompletePanel({
       .filter((pot) => pot.originalAmount > 0)
       .map((pot) => {
         const awardText =
-          pot.amount > 0 ? `${pot.amount} -> ${pot.winnerName}` : 'fully reserved'
+          pot.amount > 0
+            ? `${pot.amount} -> ${pot.winnerName}${getPotAwardRuleText(pot)}`
+            : 'fully reserved'
         const reserveText =
           pot.reservedAmount > 0 ? ` (${pot.reservedAmount} reserved for judge payout)` : ''
 

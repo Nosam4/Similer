@@ -150,6 +150,64 @@ function reserveJudgePayoutFromPots(pots, judgePlayerId, judgeStakeRefund, judge
   }
 }
 
+function chooseMainPotWinnerId(pot, rankedPlayerIds) {
+  return rankedPlayerIds.find((playerId) => {
+    return pot.eligiblePlayerIds.includes(playerId)
+  })
+}
+
+function getSimilarityScoreForPlayerId(state, playerId) {
+  const player = state.players.find((candidate) => candidate.id === playerId)
+
+  if (!player || !state.judgeWord) {
+    return Number.NEGATIVE_INFINITY
+  }
+
+  return getSimilarityScore(player.holeWord, state.judgeWord)
+}
+
+function chooseSidePotWinner(state, pot, rankedPlayerIds) {
+  if (pot.id === 1) {
+    const winnerId = chooseMainPotWinnerId(pot, rankedPlayerIds)
+
+    return {
+      winnerId,
+      awardRule: 'main-showdown',
+      winningSimilarity: getSimilarityScoreForPlayerId(state, winnerId),
+    }
+  }
+
+  if (pot.eligiblePlayerIds.length === 1) {
+    const winnerId = pot.eligiblePlayerIds[0]
+
+    return {
+      winnerId,
+      awardRule: 'only-eligible',
+      winningSimilarity: getSimilarityScoreForPlayerId(state, winnerId),
+    }
+  }
+
+  if (pot.eligiblePlayerIds.length > 1 && state.judgeWord) {
+    const winnerId = rankContenderIdsBy(state, pot.eligiblePlayerIds, (playerId) => {
+      return getSimilarityScoreForPlayerId(state, playerId)
+    })[0]
+
+    return {
+      winnerId,
+      awardRule: 'side-pot-similarity',
+      winningSimilarity: getSimilarityScoreForPlayerId(state, winnerId),
+    }
+  }
+
+  const winnerId = chooseMainPotWinnerId(pot, rankedPlayerIds)
+
+  return {
+    winnerId,
+    awardRule: 'showdown-fallback',
+    winningSimilarity: getSimilarityScoreForPlayerId(state, winnerId),
+  }
+}
+
 function settlePotsByRanking(state, rankedPlayerIds, options = {}) {
   const sidePots = buildSidePots(state).map((pot) => ({
     ...pot,
@@ -173,6 +231,9 @@ function settlePotsByRanking(state, rankedPlayerIds, options = {}) {
   }
 
   for (const pot of sidePots) {
+    const award = chooseSidePotWinner(state, pot, rankedPlayerIds)
+    const winningPlayerId = award.winnerId
+
     if (pot.amount <= 0) {
       sidePotAwards.push({
         id: pot.id,
@@ -183,13 +244,11 @@ function settlePotsByRanking(state, rankedPlayerIds, options = {}) {
         winnerId: null,
         winnerName: null,
         eligiblePlayerIds: pot.eligiblePlayerIds,
+        awardRule: award.awardRule,
+        winningSimilarity: null,
       })
       continue
     }
-
-    const winningPlayerId = rankedPlayerIds.find((playerId) => {
-      return pot.eligiblePlayerIds.includes(playerId)
-    })
 
     if (winningPlayerId !== undefined) {
       addPayoutToMap(state, payoutByPlayerId, winningPlayerId, pot.amount)
@@ -202,6 +261,8 @@ function settlePotsByRanking(state, rankedPlayerIds, options = {}) {
         winnerId: winningPlayerId,
         winnerName: getPlayerNameById(state, winningPlayerId),
         eligiblePlayerIds: pot.eligiblePlayerIds,
+        awardRule: award.awardRule,
+        winningSimilarity: award.winningSimilarity,
       })
       continue
     }
@@ -224,6 +285,8 @@ function settlePotsByRanking(state, rankedPlayerIds, options = {}) {
       winnerId: null,
       winnerName: 'Returned to contributors',
       eligiblePlayerIds: pot.eligiblePlayerIds,
+      awardRule: 'returned',
+      winningSimilarity: null,
     })
   }
 
@@ -253,7 +316,9 @@ function logSidePotAwards(state, settlement) {
     .filter((pot) => pot.originalAmount > 0)
     .map((pot) => {
       const awardText =
-        pot.amount > 0 ? `${pot.amount} to ${pot.winnerName}` : 'fully reserved'
+        pot.amount > 0
+          ? `${pot.amount} to ${pot.winnerName}${formatPotAwardRule(pot)}`
+          : 'fully reserved'
       const reserveText =
         pot.reservedAmount > 0 ? `, ${pot.reservedAmount} reserved` : ''
 
@@ -262,6 +327,29 @@ function logSidePotAwards(state, settlement) {
     .join('; ')
 
   addLog(state, `Side pots -> ${summary}.`)
+}
+
+function formatPotAwardRule(pot) {
+  if (pot.awardRule === 'main-showdown') {
+    return ' by main showdown result'
+  }
+
+  if (pot.awardRule === 'side-pot-similarity') {
+    const scoreText = Number.isFinite(pot.winningSimilarity)
+      ? ` (${formatLogScore(pot.winningSimilarity)})`
+      : ''
+    return ` by side-pot similarity${scoreText}`
+  }
+
+  if (pot.awardRule === 'only-eligible') {
+    return ' as the only eligible contender'
+  }
+
+  if (pot.awardRule === 'showdown-fallback') {
+    return ' by showdown fallback'
+  }
+
+  return ''
 }
 
 function addLog(state, message) {
