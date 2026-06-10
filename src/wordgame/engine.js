@@ -1241,6 +1241,9 @@ function setUpNewHand(state, rng = Math.random) {
     player.lastAction = null
   }
 
+  state.smallBlindIndex = null
+  state.bigBlindIndex = null
+
   const playersWithChips = countPlayersWithChips(state.players)
 
   if (playersWithChips < 2) {
@@ -1290,6 +1293,9 @@ function setUpNewHand(state, rng = Math.random) {
 
   const smallBlindPlayer = state.players[smallBlindIndex]
   const bigBlindPlayer = state.players[bigBlindIndex]
+
+  state.smallBlindIndex = smallBlindIndex
+  state.bigBlindIndex = bigBlindIndex
 
   const postedSmallBlind = commitChips(smallBlindPlayer, state.smallBlind)
   const postedBigBlind = commitChips(bigBlindPlayer, state.bigBlind)
@@ -1570,6 +1576,8 @@ export function createInitialGame(options = {}) {
   const state = {
     handNumber: 0,
     dealerIndex: -1,
+    smallBlindIndex: null,
+    bigBlindIndex: null,
     players,
     phase: 'preflop',
     currentPlayerIndex: null,

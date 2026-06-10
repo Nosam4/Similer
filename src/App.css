@@ -156,6 +156,18 @@
   color: #7b5611;
 }
 
+.small-blind-badge {
+  background: rgba(209, 119, 45, 0.14);
+  border-color: rgba(209, 119, 45, 0.42);
+  color: #9a4f12;
+}
+
+.big-blind-badge {
+  background: rgba(30, 86, 126, 0.13);
+  border-color: rgba(30, 86, 126, 0.38);
+  color: #1e567e;
+}
+
 .turn-badge {
   background: rgba(155, 35, 30, 0.12);
   border-color: rgba(155, 35, 30, 0.35);

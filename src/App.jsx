@@ -812,6 +812,8 @@ function App() {
       <PlayersGrid
         players={game.players}
         dealerIndex={game.dealerIndex}
+        smallBlindIndex={game.smallBlindIndex}
+        bigBlindIndex={game.bigBlindIndex}
         currentPlayerIndex={game.currentPlayerIndex}
         phase={game.phase}
         handComplete={game.handComplete}

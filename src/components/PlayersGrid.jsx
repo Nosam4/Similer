@@ -3,6 +3,8 @@ import { summarizePlayerStatus } from './uiHelpers'
 function PlayersGrid({
   players,
   dealerIndex,
+  smallBlindIndex = null,
+  bigBlindIndex = null,
   currentPlayerIndex,
   phase,
   handComplete,
@@ -14,6 +16,8 @@ function PlayersGrid({
     <section className="players-grid">
       {players.map((player, index) => {
         const isDealer = dealerIndex === index
+        const isSmallBlind = smallBlindIndex === index
+        const isBigBlind = bigBlindIndex === index
         const isActor = currentPlayerIndex === index
         const forceWordVisible =
           player.isJudge || phase === 'debate' || phase === 'showdownVoting' || handComplete
@@ -31,6 +35,8 @@ function PlayersGrid({
               <h2>{player.name}</h2>
               <div className="player-badges" aria-label={`${player.name} table badges`}>
                 {isDealer ? <span className="seat-badge">D</span> : null}
+                {isSmallBlind ? <span className="seat-badge small-blind-badge">SB</span> : null}
+                {isBigBlind ? <span className="seat-badge big-blind-badge">BB</span> : null}
                 {player.isJudge ? <span className="seat-badge judge-badge">Judge</span> : null}
                 {isActor ? <span className="seat-badge turn-badge">Turn</span> : null}
               </div>
