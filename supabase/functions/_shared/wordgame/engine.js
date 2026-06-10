@@ -1,4 +1,4 @@
-import wordBankData from './wordBank.json'
+import matrixData from './matrix.json' with { type: 'json' }
 
 const PHASE_LABELS = {
   preflop: 'Preflop',
@@ -17,8 +17,9 @@ const CATEGORY_LABELS = {
 const ACTIVE_JUDGE_TAX_RATE = 0.2
 const FOLDED_JUDGE_TAX_RATE = 0.1
 
-const WORDS = wordBankData.words
-const WORD_SET = new Set(WORDS)
+const WORDS = matrixData.words
+const SCORES = matrixData.scores
+const WORD_INDEX_BY_WORD = new Map(WORDS.map((word, index) => [word, index]))
 
 function deepClone(value) {
   return structuredClone(value)
@@ -457,23 +458,14 @@ function getSeatIndexByPlayerId(state) {
 }
 
 function getSimilarityScore(playerWord, judgeWord) {
-  if (!WORD_SET.has(playerWord) || !WORD_SET.has(judgeWord)) {
+  const playerWordIndex = WORD_INDEX_BY_WORD.get(playerWord)
+  const judgeWordIndex = WORD_INDEX_BY_WORD.get(judgeWord)
+
+  if (playerWordIndex === undefined || judgeWordIndex === undefined) {
     return Number.NEGATIVE_INFINITY
   }
 
-  if (playerWord === judgeWord) {
-    return 100
-  }
-
-  // Online scoring is backend-authoritative; local demo play uses a stable placeholder.
-  const pairKey = [playerWord, judgeWord].sort().join('|')
-  let hash = 0
-
-  for (let index = 0; index < pairKey.length; index += 1) {
-    hash = (hash * 31 + pairKey.charCodeAt(index)) >>> 0
-  }
-
-  return (hash % 1000) / 100
+  return SCORES[playerWordIndex]?.[judgeWordIndex] ?? Number.NEGATIVE_INFINITY
 }
 
 function formatLogScore(score) {

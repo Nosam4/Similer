@@ -29,25 +29,15 @@ import TableHeader from './components/TableHeader'
 import TurnPanel from './components/TurnPanel'
 import {
   fetchAccessibleHandWords,
-  fetchShowdownVotesForResolution,
   fetchShowdownVoteStatuses,
-  replaceHandWords,
-  revealHandWords,
-  revealJudgeWord,
-  saveRoomState,
-  setRoomStatus,
+  invokeGameCommand,
   submitShowdownVote,
 } from './multiplayer/roomApi'
 import {
-  applyRevealedWordsToGame,
   buildSubmittedPlayerVoteIds,
-  buildVotesPayload,
   buildWordMap,
-  extractPrivateHandWords,
-  getPublicRevealPlayerIds,
   hasSubmittedJudgeVote,
   hydrateGameWithWords,
-  sanitizeGameForRoomState,
 } from './multiplayer/privateGameState'
 
 const PLAYER_NAMES = ['North', 'East', 'South', 'West']
@@ -283,108 +273,19 @@ function App() {
     roomStateVersion,
   ])
 
-  const persistOnlineGame = useCallback(
-    async (nextGame, nextStatus = null, options = {}) => {
-      if (!roomId || !userId) {
-        throw new Error('No active room is connected.')
+  const applyOnlineCommandResult = useCallback((result) => {
+    setOnlineSession((previous) => {
+      if (!previous) {
+        return previous
       }
 
-      const { replacePrivateWords = false, revealPublicWords = false } = options
-
-      let stateToSave = sanitizeGameForRoomState(nextGame)
-      const savedRoomState = await saveRoomState({
-        roomId,
-        nextState: stateToSave,
-        updatedByUserId: userId,
-        expectedVersion: roomStateVersion,
-      })
-      let finalRoomState = savedRoomState
-
-      if (replacePrivateWords) {
-        await replaceHandWords({
-          roomId,
-          handNumber: nextGame.handNumber,
-          words: extractPrivateHandWords(nextGame),
-        })
+      return {
+        ...previous,
+        roomState: result.roomState ?? previous.roomState,
+        room: result.room ?? previous.room,
       }
-
-      if (nextStatus) {
-        await setRoomStatus({
-          roomId,
-          hostUserId: onlineSession?.room?.host_user_id,
-          status: nextStatus,
-        })
-      }
-
-      if (revealPublicWords) {
-        const revealedRows = []
-        const savedGame = savedRoomState.state_json
-        const savedPlayers = savedGame?.players ?? []
-        const savedJudge = savedPlayers.find((player) => player.id === savedGame?.judgePlayerId)
-
-        if (
-          savedGame?.judgePlayerId !== null &&
-          savedGame?.judgePlayerId !== undefined &&
-          (!savedGame.judgeWord || !savedJudge?.holeWord)
-        ) {
-          const judgeRows = await revealJudgeWord({
-            roomId,
-            handNumber: savedGame.handNumber,
-            playerId: savedGame.judgePlayerId,
-          })
-          revealedRows.push(...judgeRows)
-        }
-
-        const revealPlayerIds = getPublicRevealPlayerIds(savedGame).filter((playerId) => {
-          return !savedPlayers.find((player) => player.id === playerId)?.holeWord
-        })
-
-        if (revealPlayerIds.length > 0) {
-          const playerRows = await revealHandWords({
-            roomId,
-            handNumber: savedGame.handNumber,
-            playerIds: revealPlayerIds,
-          })
-          revealedRows.push(...playerRows)
-        }
-
-        if (revealedRows.length > 0) {
-          stateToSave = sanitizeGameForRoomState(
-            applyRevealedWordsToGame(nextGame, revealedRows),
-          )
-          finalRoomState = await saveRoomState({
-            roomId,
-            nextState: stateToSave,
-            updatedByUserId: userId,
-            expectedVersion: savedRoomState.version,
-          })
-          setOnlineWordsByPlayerId((previous) => ({
-            ...previous,
-            ...buildWordMap(revealedRows),
-          }))
-          setOnlinePrivateDataKey(`${roomId}:${savedGame.handNumber}`)
-        }
-      }
-
-      setOnlineSession((previous) => {
-        if (!previous) {
-          return previous
-        }
-
-        return {
-          ...previous,
-          roomState: finalRoomState,
-          room: nextStatus
-            ? {
-                ...previous.room,
-                status: nextStatus,
-              }
-            : previous.room,
-        }
-      })
-    },
-    [onlineSession?.room?.host_user_id, roomId, roomStateVersion, userId],
-  )
+    })
+  }, [])
 
   useEffect(() => {
     const previousPhase = previousPhaseRef.current
@@ -425,25 +326,40 @@ function App() {
 
   async function runAction(type, amountOverride) {
     try {
-      const nextGame = applyPlayerAction(
-        game,
-        type,
-        amountOverride ?? Number(amountInput),
-      )
       if (isOnlinePlaying) {
         setOnlineGameBusy(true)
-        await persistOnlineGame(nextGame, null, { revealPublicWords: true })
+        const result = await invokeGameCommand({
+          roomId,
+          command: 'playerAction',
+          payload: {
+            type,
+            amount: amountOverride ?? Number(amountInput),
+          },
+        })
+        applyOnlineCommandResult(result)
+
+        const nextLegal = getLegalActions(result.roomState.state_json)
+        if (nextLegal.raise) {
+          setAmountInput(String(nextLegal.minRaiseTo))
+        } else if (nextLegal.bet) {
+          setAmountInput(String(nextLegal.minBetTo))
+        }
       } else {
+        const nextGame = applyPlayerAction(
+          game,
+          type,
+          amountOverride ?? Number(amountInput),
+        )
         setLocalGame(nextGame)
+
+        const nextLegal = getLegalActions(nextGame)
+        if (nextLegal.raise) {
+          setAmountInput(String(nextLegal.minRaiseTo))
+        } else if (nextLegal.bet) {
+          setAmountInput(String(nextLegal.minBetTo))
+        }
       }
       setErrorText('')
-
-      const nextLegal = getLegalActions(nextGame)
-      if (nextLegal.raise) {
-        setAmountInput(String(nextLegal.minRaiseTo))
-      } else if (nextLegal.bet) {
-        setAmountInput(String(nextLegal.minBetTo))
-      }
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Action failed.')
     } finally {
@@ -452,15 +368,16 @@ function App() {
   }
 
   async function beginNextHand() {
-    const nextGame = startNextHand(game)
     try {
       if (isOnlinePlaying) {
         setOnlineGameBusy(true)
-        await persistOnlineGame(nextGame, null, {
-          replacePrivateWords: true,
-          revealPublicWords: true,
+        const result = await invokeGameCommand({
+          roomId,
+          command: 'startNextHand',
         })
+        applyOnlineCommandResult(result)
       } else {
+        const nextGame = startNextHand(game)
         setLocalGame(nextGame)
       }
       setErrorText('')
@@ -476,21 +393,26 @@ function App() {
   }
 
   async function startNewGame() {
-    const nextGame = createInitialGame({
-      playerNames: getRestartPlayerNames(game, onlineSession),
-      startingStack: STARTING_STACK,
-      smallBlind: SMALL_BLIND,
-      bigBlind: BIG_BLIND,
-    })
-
     try {
       if (isOnlinePlaying) {
         setOnlineGameBusy(true)
-        await persistOnlineGame(nextGame, null, {
-          replacePrivateWords: true,
-          revealPublicWords: true,
+        const result = await invokeGameCommand({
+          roomId,
+          command: 'startNewGame',
+          payload: {
+            startingStack: STARTING_STACK,
+            smallBlind: SMALL_BLIND,
+            bigBlind: BIG_BLIND,
+          },
         })
+        applyOnlineCommandResult(result)
       } else {
+        const nextGame = createInitialGame({
+          playerNames: getRestartPlayerNames(game, onlineSession),
+          startingStack: STARTING_STACK,
+          smallBlind: SMALL_BLIND,
+          bigBlind: BIG_BLIND,
+        })
         setLocalGame(nextGame)
       }
       setErrorText('')
@@ -512,27 +434,18 @@ function App() {
         return
       }
 
-      let playerVotesForResolution = effectivePlayerVotes
-      let judgeVoteForResolution = judge ? Number(effectiveJudgeVote) : null
-
-      if (isOnlinePlaying) {
-        const voteRows = await fetchShowdownVotesForResolution({
-          roomId,
-          handNumber: game.handNumber,
-        })
-        const privateVotes = buildVotesPayload(voteRows)
-        playerVotesForResolution = privateVotes.playerVotes
-        judgeVoteForResolution = judge ? Number(privateVotes.judgeVote) : null
-      }
-
-      const nextGame = resolveShowdownVotes(game, {
-        playerVotes: playerVotesForResolution,
-        judgeVote: judgeVoteForResolution,
-      })
       if (isOnlinePlaying) {
         setOnlineGameBusy(true)
-        await persistOnlineGame(nextGame, null, { revealPublicWords: true })
+        const result = await invokeGameCommand({
+          roomId,
+          command: 'resolveVotes',
+        })
+        applyOnlineCommandResult(result)
       } else {
+        const nextGame = resolveShowdownVotes(game, {
+          playerVotes: effectivePlayerVotes,
+          judgeVote: judge ? Number(effectiveJudgeVote) : null,
+        })
         setLocalGame(nextGame)
       }
       setErrorText('')
@@ -545,11 +458,15 @@ function App() {
 
   async function completeDebate() {
     try {
-      const nextGame = completeDebateStage(game)
       if (isOnlinePlaying) {
         setOnlineGameBusy(true)
-        await persistOnlineGame(nextGame, null, { revealPublicWords: true })
+        const result = await invokeGameCommand({
+          roomId,
+          command: 'completeDebate',
+        })
+        applyOnlineCommandResult(result)
       } else {
+        const nextGame = completeDebateStage(game)
         setLocalGame(nextGame)
       }
       setErrorText('')
@@ -680,18 +597,16 @@ function App() {
 
     try {
       setOnlineGameBusy(true)
-      const onlinePlayerNames = getOnlinePlayerNames(onlineSession.players)
-      const initialSharedGame = createInitialGame({
-        playerNames: onlinePlayerNames,
-        startingStack: STARTING_STACK,
-        smallBlind: SMALL_BLIND,
-        bigBlind: BIG_BLIND,
+      const result = await invokeGameCommand({
+        roomId,
+        command: 'startGame',
+        payload: {
+          startingStack: STARTING_STACK,
+          smallBlind: SMALL_BLIND,
+          bigBlind: BIG_BLIND,
+        },
       })
-
-      await persistOnlineGame(initialSharedGame, 'playing', {
-        replacePrivateWords: true,
-        revealPublicWords: true,
-      })
+      applyOnlineCommandResult(result)
 
       setErrorText('')
       setAmountInput('')
@@ -709,6 +624,7 @@ function App() {
     isOnlinePlaying && myOnlineSeatIndex !== null
       ? game.players.find((player) => player.id === myOnlineSeatIndex) ?? null
       : null
+  const isOnlineHost = Boolean(isOnlinePlaying && onlineSession?.room?.host_user_id === userId)
   const isBustedOnline = Boolean(
     isOnlinePlaying &&
       myOnlinePlayer &&
@@ -836,7 +752,7 @@ function App() {
             game={game}
             onBeginNextHand={beginNextHand}
             onStartNewGame={startNewGame}
-            actionDisabled={onlineGameBusy}
+            actionDisabled={onlineGameBusy || (isOnlinePlaying && !isOnlineHost)}
             pulseTick={pulseTicks.handPanel}
             winnerPulseTick={pulseTicks.winnerLine}
           />

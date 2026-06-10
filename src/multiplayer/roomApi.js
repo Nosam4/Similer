@@ -158,6 +158,31 @@ export async function fetchRoomState(roomId) {
   return response.data
 }
 
+export async function invokeGameCommand({ roomId, command, payload = {} }) {
+  const client = getSupabaseClient()
+  const response = await client.functions.invoke('game-action', {
+    body: {
+      roomId,
+      command,
+      payload,
+    },
+  })
+
+  if (response.error) {
+    throw new Error(response.error.message)
+  }
+
+  if (response.data?.error) {
+    throw new Error(response.data.error)
+  }
+
+  if (!response.data?.roomState) {
+    throw new Error('Game command did not return an updated room state.')
+  }
+
+  return response.data
+}
+
 export async function setReady({ roomId, userId, isReady }) {
   const client = getSupabaseClient()
   const response = await client
