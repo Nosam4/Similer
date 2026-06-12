@@ -1,105 +1,131 @@
 # Similer: Word Judge Poker
 
-A poker-style social word game using a fixed 100-word similarity matrix.
+A poker-style social word game where hidden words, table talk, player voting, judge voting, and semantic similarity decide each hand.
 
-## Core idea
+## Core Idea
 
-Each active player gets one hidden **WORD** (their hole card).
-After preflop betting, one player becomes the **Judge** and reveals their word.
-Remaining contenders bet once more, then showdown is decided by three categories:
+Each active player receives one hidden word, similar to a poker hole card. Players bet, a Judge word becomes live, contenders debate whose word connects most closely to the Judge word, and the hand resolves through voting plus backend similarity scoring.
 
-1. `player vote` (contenders vote)
-2. `judge vote` (judge selects best connection)
-3. `similarity score` (matrix value against judge word)
+## Round Flow
 
-A player wins by taking `2/3` or `3/3` categories.
-If categories split across different players, similarity is used as the final tiebreak.
+1. A new hand starts and active players receive private words.
+2. Preflop betting begins with small blind and big blind posting.
+3. A Judge phase starts after preflop betting resolves.
+4. The Judge word is revealed, and the Judge does not act in later betting.
+5. A postflop betting round occurs with the Judge word live.
+6. Contenders enter the Debate Stage and argue why their word is closest.
+7. Showdown Voting collects player votes and, when applicable, the Judge vote.
+8. The Supabase Edge Function resolves payouts, Judge Tax, side pots, and the next state.
 
-## Judge incentive
+## Showdown Logic
 
-- Judge is inactive after the flop (postflop) phase starts.
-- Judge contribution remains at risk in the pot.
-- If the judge vote matches the final winner, judge receives:
-  - their contribution back
-  - plus `5%` of total pot (integer chips via floor)
+Most hands use three categories:
 
-## Round flow
+1. `Player Vote`
+2. `Judge Vote`
+3. `Similarity`
 
-1. New hand starts, words are dealt privately.
-2. Preflop betting (fold/check/call/bet/raise/all-in).
-3. Judge assigned (left of dealer among remaining players); judge word is revealed.
-4. Single postflop betting round (judge cannot act).
-5. If only one contender remains, they win uncontested.
-6. Otherwise showdown voting resolves winner and payouts.
+A contender wins by taking at least two categories. If category wins split, similarity breaks the tie.
 
-## Matrix source
+Special cases:
 
-- Source file: `2818_(2)randomizedwords_matrix1.xlsx`
-- App runtime file: `src/wordgame/matrix.json`
-- Matrix size: `100 x 100`
+- Two-player final duels use a neutral Judge word and similarity decides the winner.
+- Neutral all-in showdowns use player votes first; a clear majority wins, otherwise similarity decides.
+- Side pots are awarded only among players eligible for that specific pot layer.
 
-## Run locally
+## Judge Incentive
+
+The Judge is inactive after becoming Judge.
+
+Current Judge payout rules:
+
+- An active Judge receives their covered stake back when the hand ends.
+- An active Judge earns a 20% Judge Tax if their Judge vote matches the main hand winner.
+- A folded Judge does not receive a stake refund.
+- A folded Judge earns a reduced 10% Judge Tax if their Judge vote matches the main hand winner.
+- Judge Tax can only be taken from pot layers the Judge contributed to.
+- No Judge can tax uncovered side pots above their committed stake.
+
+## Words And Similarity
+
+The frontend uses `src/wordgame/wordBank.json` to display the public word bank size and support local demo play.
+
+Online similarity scoring is backend-authoritative:
+
+- The real 100-word matrix is stored as `supabase/functions/_shared/wordgame/matrix.json`.
+- That matrix file is intentionally ignored by Git so players cannot inspect the frontend bundle to cheat.
+- The Supabase Edge Function loads the hidden matrix and resolves online similarity scores server-side.
+
+Word generation utilities are kept for future word packs:
+
+- `scripts/generate_word_matrix.py`
+- `scripts/requirements-wordgen.txt`
+
+## Multiplayer
+
+Similer supports Supabase rooms with up to 8 players.
+
+The online flow includes:
+
+- Anonymous Supabase auth.
+- Create and join rooms by code.
+- Live seat and ready-state sync.
+- Server-authoritative gameplay actions through the `game-action` Edge Function.
+- Private hand words stored separately from public room state.
+- Showdown vote status sync without exposing vote targets early.
+
+## Local Setup
+
+Install dependencies:
 
 ```bash
 npm install
-npm run dev
 ```
 
-Then open the Vite local URL.
-
-## Multiplayer foundation (Supabase)
-
-This project now includes a Phase 1 multiplayer room system:
-
-- anonymous auth session bootstrap
-- create/join 4-player rooms by code
-- live seat + ready-state sync
-- SQL schema for rooms, players, room state, and action history
-
-### 1. Set local env vars
-
-Create a `.env.local` file (or copy `.env.example`) and set:
+Create `.env.local` from `.env.example` and set:
 
 ```bash
 VITE_SUPABASE_URL=...
 VITE_SUPABASE_PUBLISHABLE_KEY=...
 ```
 
-### 2. Apply the SQL migration in Supabase
-
-Run the SQL in:
-
-- `supabase/migrations/20260529120000_multiplayer_rooms.sql`
-
-This creates:
-
-- `rooms`
-- `room_players`
-- `room_states`
-- `room_actions`
-- RPC functions: `create_room`, `join_room`, `leave_room`
-- RLS policies for member-scoped access
-
-### 3. Enable anonymous sign-ins
-
-In Supabase Auth, enable anonymous sign-ins so room guests can connect without full account signup.
-
-### 4. Start app
+Run locally:
 
 ```bash
 npm run dev
 ```
 
-Room UI appears in the app at the top in `Online Multiplayer (Supabase Rooms)`.
-Gameplay is still local-state today; shared turn/action sync is the next phase.
+## Supabase Setup
 
-## Implementation files
+Apply migrations in order from `supabase/migrations/`.
 
-- App UI: `src/App.jsx`
-- Styling: `src/App.css`
-- Game engine: `src/wordgame/engine.js`
-- Similarity matrix data: `src/wordgame/matrix.json`
-- Room lobby UI: `src/components/OnlineRoomPanel.jsx`
-- Supabase client: `src/lib/supabaseClient.js`
-- Room APIs: `src/multiplayer/roomApi.js`
-- SQL migration: `supabase/migrations/20260529120000_multiplayer_rooms.sql`
+Deploy the Edge Function after changing server-side game logic:
+
+```bash
+supabase functions deploy game-action --project-ref yvltpqzlcbcdrtchnfrb
+```
+
+The server-only matrix must exist locally at:
+
+```text
+supabase/functions/_shared/wordgame/matrix.json
+```
+
+## GitHub Pages
+
+The Vite production base path is `/Similer/`, configured in `vite.config.js`.
+
+GitHub Pages deploys through `.github/workflows/deploy.yml`.
+
+## Important Files
+
+- `src/App.jsx`: main app flow and online/offline state wiring.
+- `src/App.css`: table styling, pulses, confetti layer, and stage overlay styling.
+- `src/components/`: UI panels and table components.
+- `src/wordgame/engine.js`: local/demo game engine and shared frontend helpers.
+- `src/wordgame/wordBank.json`: frontend-visible word bank.
+- `src/multiplayer/roomApi.js`: Supabase room and online command APIs.
+- `src/multiplayer/privateGameState.js`: private word/vote hydration helpers for the frontend.
+- `supabase/functions/game-action/index.ts`: server-authoritative online gameplay endpoint.
+- `supabase/functions/_shared/wordgame/engine.js`: backend game engine used by the Edge Function.
+- `supabase/migrations/`: database schema, RLS, RPC, and permission migrations.

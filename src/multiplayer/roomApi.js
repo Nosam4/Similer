@@ -213,97 +213,6 @@ export async function setReady({ roomId, userId, isReady }) {
   }
 }
 
-export async function setRoomStatus({ roomId, hostUserId, status }) {
-  const client = getSupabaseClient()
-  const response = await client
-    .from('rooms')
-    .update({ status })
-    .eq('id', roomId)
-    .eq('host_user_id', hostUserId)
-    .select('id, code, host_user_id, status, max_players, created_at, updated_at')
-    .maybeSingle()
-
-  if (response.error) {
-    throw new Error(response.error.message)
-  }
-
-  if (!response.data) {
-    throw new Error('Only the room host can change room status.')
-  }
-
-  return response.data
-}
-
-export async function saveRoomState({
-  roomId,
-  nextState,
-  updatedByUserId,
-  expectedVersion = null,
-}) {
-  const client = getSupabaseClient()
-
-  if (expectedVersion === null || expectedVersion === undefined) {
-    const response = await client
-      .from('room_states')
-      .upsert(
-        {
-          room_id: roomId,
-          version: 1,
-          state_json: nextState,
-          updated_by: updatedByUserId,
-        },
-        { onConflict: 'room_id' },
-      )
-      .select('room_id, version, state_json, updated_by, updated_at')
-      .maybeSingle()
-
-    if (response.error) {
-      throw new Error(response.error.message)
-    }
-
-    if (!response.data) {
-      throw new Error('Unable to save room state.')
-    }
-
-    return response.data
-  }
-
-  const response = await client
-    .from('room_states')
-    .update({
-      version: Number(expectedVersion) + 1,
-      state_json: nextState,
-      updated_by: updatedByUserId,
-    })
-    .eq('room_id', roomId)
-    .eq('version', expectedVersion)
-    .select('room_id, version, state_json, updated_by, updated_at')
-    .maybeSingle()
-
-  if (response.error) {
-    throw new Error(response.error.message)
-  }
-
-  if (!response.data) {
-    throw new Error('Room state changed on another device. Please try again.')
-  }
-
-  return response.data
-}
-
-export async function replaceHandWords({ roomId, handNumber, words }) {
-  const client = getSupabaseClient()
-  const response = await client.rpc('replace_hand_words', {
-    p_room_id: roomId,
-    p_hand_number: handNumber,
-    p_words: words,
-  })
-
-  if (response.error) {
-    throw new Error(response.error.message)
-  }
-}
-
 export async function fetchAccessibleHandWords({ roomId, handNumber }) {
   const client = getSupabaseClient()
   const response = await client
@@ -312,36 +221,6 @@ export async function fetchAccessibleHandWords({ roomId, handNumber }) {
     .eq('room_id', roomId)
     .eq('hand_number', handNumber)
     .order('player_id', { ascending: true })
-
-  if (response.error) {
-    throw new Error(response.error.message)
-  }
-
-  return response.data ?? []
-}
-
-export async function revealJudgeWord({ roomId, handNumber, playerId }) {
-  const client = getSupabaseClient()
-  const response = await client.rpc('reveal_judge_word', {
-    p_room_id: roomId,
-    p_hand_number: handNumber,
-    p_player_id: playerId,
-  })
-
-  if (response.error) {
-    throw new Error(response.error.message)
-  }
-
-  return response.data ?? []
-}
-
-export async function revealHandWords({ roomId, handNumber, playerIds = null }) {
-  const client = getSupabaseClient()
-  const response = await client.rpc('reveal_hand_words', {
-    p_room_id: roomId,
-    p_hand_number: handNumber,
-    p_player_ids: playerIds,
-  })
 
   if (response.error) {
     throw new Error(response.error.message)
@@ -374,20 +253,6 @@ export async function submitShowdownVote({
 export async function fetchShowdownVoteStatuses({ roomId, handNumber }) {
   const client = getSupabaseClient()
   const response = await client.rpc('get_showdown_vote_statuses', {
-    p_room_id: roomId,
-    p_hand_number: handNumber,
-  })
-
-  if (response.error) {
-    throw new Error(response.error.message)
-  }
-
-  return response.data ?? []
-}
-
-export async function fetchShowdownVotesForResolution({ roomId, handNumber }) {
-  const client = getSupabaseClient()
-  const response = await client.rpc('get_showdown_votes_for_resolution', {
     p_room_id: roomId,
     p_hand_number: handNumber,
   })
