@@ -827,6 +827,7 @@ function App() {
           <TurnPanel
             actor={actor}
             legal={legal}
+            potSummary={potSummary}
             amountInput={amountInput}
             setAmountInput={setAmountInput}
             onRunAction={(type, amountOverride) => {

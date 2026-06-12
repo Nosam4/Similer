@@ -1,11 +1,36 @@
+function clampBetTarget(target, legal) {
+  const minimumTarget = legal.raise ? legal.minRaiseTo : legal.minBetTo
+  const maximumTarget = legal.maxTo
+
+  if (minimumTarget === null || maximumTarget === null) {
+    return 0
+  }
+
+  return Math.min(Math.max(target, minimumTarget), maximumTarget)
+}
+
+function getPotBetTarget({ legal, potSummary, fraction }) {
+  const potTotal = potSummary?.totalPot ?? 0
+  const currentBet = potSummary?.currentBet ?? 0
+  const callAmount = legal.callAmount ?? 0
+  const rawTarget = legal.raise
+    ? currentBet + Math.ceil((potTotal + callAmount) * fraction)
+    : Math.ceil(potTotal * fraction)
+
+  return clampBetTarget(rawTarget, legal)
+}
+
 function TurnPanel({
   actor,
   legal,
+  potSummary,
   amountInput,
   setAmountInput,
   onRunAction,
   pulseTick = 0,
 }) {
+  const canSetBetTarget = legal.bet || legal.raise
+
   return (
     <div
       key={`turn-panel-${pulseTick}`}
@@ -28,18 +53,42 @@ function TurnPanel({
         />
         <button
           type="button"
+          disabled={!legal.bet}
           onClick={() => setAmountInput(String(legal.minBetTo ?? legal.maxTo ?? 0))}
         >
-          Use Min Bet
+          Min Bet
         </button>
         <button
           type="button"
+          disabled={!legal.raise}
           onClick={() => setAmountInput(String(legal.minRaiseTo ?? legal.maxTo ?? 0))}
         >
-          Use Min Raise
+          Min Raise
         </button>
-        <button type="button" onClick={() => setAmountInput(String(legal.maxTo ?? 0))}>
-          Use Max
+        <button
+          type="button"
+          disabled={!canSetBetTarget}
+          onClick={() => {
+            setAmountInput(String(getPotBetTarget({ legal, potSummary, fraction: 0.5 })))
+          }}
+        >
+          1/2 Pot
+        </button>
+        <button
+          type="button"
+          disabled={!canSetBetTarget}
+          onClick={() => {
+            setAmountInput(String(getPotBetTarget({ legal, potSummary, fraction: 1 })))
+          }}
+        >
+          Pot
+        </button>
+        <button
+          type="button"
+          disabled={!canSetBetTarget}
+          onClick={() => setAmountInput(String(legal.maxTo ?? 0))}
+        >
+          Max
         </button>
       </div>
 
