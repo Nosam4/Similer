@@ -24,6 +24,7 @@ import JudgeRow from './components/JudgeRow'
 import OnlineRoomPanel from './components/OnlineRoomPanel'
 import PlayersGrid from './components/PlayersGrid'
 import ShowdownVotingPanel from './components/ShowdownVotingPanel'
+import StageOverlay from './components/StageOverlay'
 import StatusRow from './components/StatusRow'
 import TableHeader from './components/TableHeader'
 import TurnPanel from './components/TurnPanel'
@@ -711,6 +712,11 @@ function App() {
   return (
     <main className="table-shell">
       <ConfettiComponent key={confettiKey} active={confettiActive} mode={confettiMode} />
+      <StageOverlay
+        activeKey={isDebate ? `debate-${game.handNumber}` : ''}
+        title="DEBATE STAGE"
+        judgeWord={judgeWord}
+      />
 
       <OnlineRoomPanel
         onSessionChange={handleOnlineSessionChange}
