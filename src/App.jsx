@@ -142,6 +142,7 @@ function App() {
   const isShowdownVoting = game.phase === 'showdownVoting'
   const isDebate = game.phase === 'debate'
   const judgeWord = game.judgeWord ?? judge?.holeWord ?? null
+  const isJudgeWordLive = game.phase === 'postflop' && Boolean(judgeWord)
   const isFinalDuel = game.showdownMode === 'similarityDuel'
   const isNeutralVoting = game.showdownMode === 'neutralVoting'
   const onlineSubmittedPlayerVoteIds = useMemo(() => {
@@ -695,6 +696,23 @@ function App() {
     (isMyTurnOnline || isBustedOnline || isDebate || isShowdownVoting || game.handComplete)
   const visibleErrorText =
     shouldHideTurnWaitError ? '' : errorText
+  const stageOverlayConfig = isJudgeWordLive
+    ? {
+        activeKey: `judge-word-live-${game.handNumber}-${judge?.id ?? 'neutral'}-${judgeWord}`,
+        kicker: 'Word Revealed',
+        title: 'JUDGE WORD LIVE',
+        wordLabel: judge ? `${judge.name} reveals` : 'Judge word',
+        message: judge
+          ? 'Make your next bet with the word in mind.'
+          : 'Betting continues with the word revealed.',
+      }
+    : isDebate
+      ? {
+          activeKey: `debate-${game.handNumber}`,
+          title: 'DEBATE STAGE',
+          judgeWord,
+        }
+      : null
 
   function toggleWordReveal(playerId) {
     if (isOnlinePlaying && myOnlineSeatIndex !== null && playerId !== myOnlineSeatIndex) {
@@ -713,9 +731,12 @@ function App() {
     <main className="table-shell">
       <ConfettiComponent key={confettiKey} active={confettiActive} mode={confettiMode} />
       <StageOverlay
-        activeKey={isDebate ? `debate-${game.handNumber}` : ''}
-        title="DEBATE STAGE"
+        activeKey={stageOverlayConfig?.activeKey ?? ''}
+        kicker={stageOverlayConfig?.kicker}
+        title={stageOverlayConfig?.title}
         judgeWord={judgeWord}
+        wordLabel={stageOverlayConfig?.wordLabel}
+        message={stageOverlayConfig?.message}
       />
 
       <OnlineRoomPanel

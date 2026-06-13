@@ -1,4 +1,11 @@
-function StageOverlay({ activeKey, title, judgeWord }) {
+function StageOverlay({
+  activeKey,
+  title,
+  judgeWord,
+  kicker = 'New Phase',
+  wordLabel = 'Judge word',
+  message = 'Make your case. Why is your word the closest?',
+}) {
   if (!activeKey) {
     return null
   }
@@ -9,15 +16,15 @@ function StageOverlay({ activeKey, title, judgeWord }) {
       className="stage-overlay"
       role="status"
       aria-live="polite"
-      aria-label={`${title}. Judge word: ${judgeWord ?? 'pending'}. Make your case.`}
+      aria-label={`${title}. ${wordLabel}: ${judgeWord ?? 'pending'}. ${message}`}
     >
       <div className="stage-overlay-card">
-        <p className="stage-overlay-kicker">New Phase</p>
+        <p className="stage-overlay-kicker">{kicker}</p>
         <h2>{title}</h2>
         <p>
-          Judge word: <b>{judgeWord ?? 'revealed word'}</b>
+          {wordLabel}: <b>{judgeWord ?? 'revealed word'}</b>
         </p>
-        <p>Make your case. Why is your word the closest?</p>
+        <p>{message}</p>
       </div>
     </aside>
   )
