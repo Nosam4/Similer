@@ -181,6 +181,50 @@ function getSimilarityScoreForPlayerId(state, playerId) {
   return getSimilarityScore(player.holeWord, state.judgeWord)
 }
 
+function getSimilarityScoreStatus(player) {
+  if (player.isJudge) {
+    return 'Judge word benchmark'
+  }
+
+  if (player.folded) {
+    return 'Folded - not eligible'
+  }
+
+  if (isContender(player)) {
+    return 'Contender'
+  }
+
+  return 'Not eligible'
+}
+
+function buildAllSimilarityScores(state) {
+  if (!state.judgeWord) {
+    return []
+  }
+
+  return state.players
+    .filter((player) => player.inHand && player.holeWord)
+    .map((player) => {
+      return {
+        playerId: player.id,
+        playerName: player.name,
+        word: player.holeWord,
+        similarity: getSimilarityScore(player.holeWord, state.judgeWord),
+        status: getSimilarityScoreStatus(player),
+        eligible: isContender(player),
+        folded: player.folded,
+        isJudge: player.isJudge,
+      }
+    })
+    .sort((left, right) => {
+      if (left.isJudge !== right.isJudge) {
+        return left.isJudge ? 1 : -1
+      }
+
+      return right.similarity - left.similarity
+    })
+}
+
 function chooseSidePotWinner(state, pot, rankedPlayerIds) {
   if (pot.id === 1) {
     const winnerId = chooseMainPotWinnerId(pot, rankedPlayerIds)
@@ -598,6 +642,7 @@ function settleUncontestedPot(state) {
       : null,
     payouts: settlement.payouts,
     sidePots: settlement.sidePots,
+    allSimilarityScores: buildAllSimilarityScores(state),
   }
 
   state.handComplete = true
@@ -747,6 +792,7 @@ function resolveSimilarityDuel(state) {
     },
     payouts: settlement.payouts,
     sidePots: settlement.sidePots,
+    allSimilarityScores: buildAllSimilarityScores(state),
   }
 
   addLog(
@@ -1688,6 +1734,7 @@ function resolveNeutralVoting(previousState, playerVotes) {
     },
     payouts: settlement.payouts,
     sidePots: settlement.sidePots,
+    allSimilarityScores: buildAllSimilarityScores(state),
   }
 
   const playerVoteWinnerName =
@@ -1800,6 +1847,7 @@ export function resolveShowdownVotes(previousState, payload) {
     },
     payouts: settlement.payouts,
     sidePots: settlement.sidePots,
+    allSimilarityScores: buildAllSimilarityScores(state),
   }
 
   addLog(

@@ -70,6 +70,46 @@ function HandCompletePanel({
       <p key={payout.playerId}>Payout: {payout.playerName} +{payout.amount}</p>
     ))
   }
+  const renderAllSimilarityScores = () => {
+    const scores = game.showdown?.allSimilarityScores ?? []
+
+    if (scores.length === 0) {
+      return null
+    }
+
+    const nonJudgeScores = scores.filter((score) => !score.isJudge)
+    const bestEligibleScore = nonJudgeScores.find((score) => score.eligible)
+    const bestFoldedScore = nonJudgeScores.find((score) => score.folded)
+    const hasFoldedNearMiss =
+      bestFoldedScore &&
+      bestEligibleScore &&
+      Number.isFinite(bestFoldedScore.similarity) &&
+      Number.isFinite(bestEligibleScore.similarity) &&
+      bestFoldedScore.similarity > bestEligibleScore.similarity
+    const judgeWord = game.showdown?.judgeWord ?? game.showdown?.judge?.word ?? game.judgeWord
+
+    return (
+      <div className="showdown-grid">
+        <h4>All Similarity Scores</h4>
+        <p>
+          Judge word: <b>{judgeWord}</b>. Folded and Judge players are shown for
+          curiosity, but were not eligible to win the pot.
+        </p>
+        {hasFoldedNearMiss ? (
+          <p>
+            Near miss: {bestFoldedScore.playerName} ({bestFoldedScore.word}) had
+            the highest non-Judge similarity after folding.
+          </p>
+        ) : null}
+        {scores.map((score) => (
+          <p key={`similarity-score-${score.playerId}`}>
+            {score.playerName} ({score.word}) | Similarity:{' '}
+            {formatScore(score.similarity)} | {score.status}
+          </p>
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div
@@ -161,6 +201,8 @@ function HandCompletePanel({
           {renderPayouts()}
         </div>
       ) : null}
+
+      {renderAllSimilarityScores()}
 
       <button
         type="button"
