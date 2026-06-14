@@ -4,6 +4,7 @@ function ShowdownVotingPanel({
   judge,
   judgeWord = null,
   contenders,
+  playerVoteVoters = [],
   defaultPlayerVotes,
   effectivePlayerVotes,
   setPlayerVotes,
@@ -28,9 +29,10 @@ function ShowdownVotingPanel({
   onSubmitOnlineJudgeVote = null,
 }) {
   const displayJudgeWord = judge?.holeWord ?? judgeWord
-  const myContender = contenders.find((player) => player.id === myPlayerId) ?? null
-  const myPlayerVoteTargets = myContender
-    ? contenders.filter((target) => target.id !== myContender.id)
+  const myPlayerVoteVoter = playerVoteVoters.find((player) => player.id === myPlayerId) ?? null
+  const myIsContender = contenders.some((player) => player.id === myPlayerId)
+  const myPlayerVoteTargets = myPlayerVoteVoter
+    ? contenders.filter((target) => !myIsContender || target.id !== myPlayerVoteVoter.id)
     : []
   const isJudge = judge?.id === myPlayerId
   const isValidSubmittedPlayerVote = (voter) => {
@@ -41,7 +43,7 @@ function ShowdownVotingPanel({
     return false
   }
   const myPlayerVoteSubmitted =
-    myContender && isValidSubmittedPlayerVote(myContender)
+    myPlayerVoteVoter && isValidSubmittedPlayerVote(myPlayerVoteVoter)
   const onlinePlayerVoteIsValid = myPlayerVoteTargets.some((target) => {
     return target.id === Number(onlinePlayerVoteValue)
   })
@@ -55,19 +57,19 @@ function ShowdownVotingPanel({
         <h3>Showdown Voting</h3>
         {usesJudgeVote ? (
           <p>
-            Judge word is <b>{displayJudgeWord}</b>. Each active contender submits
-            their own player vote, and the judge submits the judge vote.
+            Judge word is <b>{displayJudgeWord}</b>. Everyone except the Judge
+            submits a Player Vote, and only active contenders can receive votes.
           </p>
         ) : (
           <p>
-            Neutral judge word is <b>{displayJudgeWord}</b>. Each active
-            contender submits a player vote. A clear majority wins; otherwise
-            similarity decides.
+            Neutral judge word is <b>{displayJudgeWord}</b>. Everyone at the
+            table submits a Player Vote for an active contender. A clear majority
+            wins; otherwise similarity decides.
           </p>
         )}
 
         <div className="votes-grid">
-          {myContender ? (
+          {myPlayerVoteVoter ? (
             <label>
               Your player vote
               <select
@@ -91,7 +93,7 @@ function ShowdownVotingPanel({
               </button>
             </label>
           ) : (
-            <p>Only active contenders submit player votes.</p>
+            <p>The Judge does not submit a Player Vote.</p>
           )}
 
           {usesJudgeVote && isJudge ? (
@@ -129,9 +131,9 @@ function ShowdownVotingPanel({
 
         <div className="showdown-grid">
           <p>
-            Player votes submitted: {submittedPlayerVoteCount}/{contenders.length}
+            Player votes submitted: {submittedPlayerVoteCount}/{playerVoteVoters.length}
           </p>
-          {contenders.map((voter) => (
+          {playerVoteVoters.map((voter) => (
             <p key={voter.id}>
               {voter.name} vote:{' '}
               {isValidSubmittedPlayerVote(voter) ? 'Submitted' : 'Pending'}
@@ -165,18 +167,19 @@ function ShowdownVotingPanel({
       <h3>Showdown Voting</h3>
       {usesJudgeVote ? (
         <p>
-          Judge word is <b>{displayJudgeWord}</b>. Submit every player vote plus the
-          judge vote to resolve winner.
+          Judge word is <b>{displayJudgeWord}</b>. Everyone except the Judge
+          submits a Player Vote, then the Judge submits the Judge Vote.
         </p>
       ) : (
         <p>
-          Neutral judge word is <b>{displayJudgeWord}</b>. Submit every player vote.
-          A clear majority wins; otherwise similarity decides.
+          Neutral judge word is <b>{displayJudgeWord}</b>. Everyone at the table
+          submits a Player Vote. A clear majority wins; otherwise similarity
+          decides.
         </p>
       )}
 
       <div className="votes-grid">
-        {contenders.map((voter) => (
+        {playerVoteVoters.map((voter) => (
           <label key={voter.id}>
             {voter.name} vote
             <select

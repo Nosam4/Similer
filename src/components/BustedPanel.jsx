@@ -5,7 +5,10 @@ function BustedPanel({ playerName }) {
       <p>
         {playerName ? `${playerName}, you're out of chips.` : "You're out of chips."}
       </p>
-      <p>You can still watch the table, but you cannot act or vote until a new game starts.</p>
+      <p>
+        You can still watch the table. You cannot act in betting, but you can vote
+        during Showdown Voting.
+      </p>
     </div>
   )
 }

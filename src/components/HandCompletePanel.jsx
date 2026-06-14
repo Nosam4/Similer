@@ -142,6 +142,9 @@ function HandCompletePanel({
             Vote = {getPlayerName(game.showdown.categories.judgeVoteWinnerId, '--')},
             Similarity = {getPlayerName(game.showdown.categories.similarityWinnerId, '--')}
           </p>
+          {game.showdown.categories.playerVoteTieBrokenBySimilarity ? (
+            <p>Player Vote tied, so similarity broke the Player Vote category.</p>
+          ) : null}
           {game.showdown.contenders.map((contender) => (
             <p key={contender.playerId}>
               {contender.playerName} ({contender.word}) | Votes:{' '}

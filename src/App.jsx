@@ -9,6 +9,7 @@ import {
   getJudgePlayer,
   getLegalActions,
   getPhaseLabel,
+  getPlayerVoteVoters,
   getPotSummary,
   getSimilarityForWords,
   getWordBankSize,
@@ -138,6 +139,7 @@ function App() {
   const potSummary = getPotSummary(game)
   const judge = getJudgePlayer(game)
   const contenders = getContenders(game)
+  const playerVoteVoters = getPlayerVoteVoters(game)
 
   const isShowdownVoting = game.phase === 'showdownVoting'
   const isDebate = game.phase === 'debate'
@@ -171,13 +173,13 @@ function App() {
 
     const defaults = {}
 
-    for (const voter of contenders) {
-      const fallback = contenders.find((candidate) => candidate.id !== voter.id)
-      defaults[voter.id] = String((fallback ?? voter).id)
+    for (const voter of playerVoteVoters) {
+      const fallback = contenders.find((candidate) => candidate.id !== voter.id) ?? contenders[0]
+      defaults[voter.id] = String(fallback.id)
     }
 
     return defaults
-  }, [contenders, isShowdownVoting])
+  }, [contenders, isShowdownVoting, playerVoteVoters])
 
   const effectivePlayerVotes =
     isOnlinePlaying
@@ -192,15 +194,17 @@ function App() {
         : judgeVote || (contenders.length > 0 ? String(contenders[0].id) : '')
       : ''
   const submittedPlayerVoteCount = isOnlinePlaying
-    ? onlineSubmittedPlayerVoteIds.length
-    : contenders.filter((voter) => {
+    ? playerVoteVoters.filter((voter) => onlineSubmittedPlayerVoteIds.includes(voter.id))
+        .length
+    : playerVoteVoters.filter((voter) => {
         const value = effectivePlayerVotes[voter.id]
         const targetId = Number(value)
 
         return (
           value !== undefined &&
           value !== '' &&
-          targetId !== voter.id &&
+          (!contenders.some((contender) => contender.id === voter.id) ||
+            targetId !== voter.id) &&
           contenders.some((target) => target.id === targetId)
         )
       }).length
@@ -212,15 +216,16 @@ function App() {
     isShowdownVoting &&
     contenders.length > 1 &&
     (isOnlinePlaying
-      ? submittedPlayerVoteCount === contenders.length && judgeVoteSubmitted
-      : contenders.every((voter) => {
+      ? submittedPlayerVoteCount === playerVoteVoters.length && judgeVoteSubmitted
+      : playerVoteVoters.every((voter) => {
           const value = effectivePlayerVotes[voter.id]
           const targetId = Number(value)
 
           return (
             value !== undefined &&
             value !== '' &&
-            targetId !== voter.id &&
+            (!contenders.some((contender) => contender.id === voter.id) ||
+              targetId !== voter.id) &&
             contenders.some((target) => target.id === targetId)
           )
         }) &&
@@ -496,8 +501,10 @@ function App() {
       return
     }
 
-    if (!contenders.some((player) => player.id === voterId)) {
-      setErrorText('Only active contenders submit player votes.')
+    const voter = playerVoteVoters.find((player) => player.id === voterId)
+
+    if (!voter) {
+      setErrorText('The Judge does not submit a Player Vote.')
       return
     }
 
@@ -506,7 +513,7 @@ function App() {
       return
     }
 
-    if (targetId === voterId) {
+    if (contenders.some((player) => player.id === voterId) && targetId === voterId) {
       setErrorText('Choose another player. You cannot vote for your own word.')
       return
     }
@@ -788,7 +795,7 @@ function App() {
           </div>
         ) : null}
 
-        {isBustedOnline && !game.handComplete ? (
+        {isBustedOnline && !game.handComplete && !isDebate && !isShowdownVoting ? (
           <BustedPanel playerName={myOnlinePlayer?.name} />
         ) : game.handComplete ? (
           <HandCompletePanel
@@ -816,6 +823,7 @@ function App() {
             judge={judge}
             judgeWord={judgeWord}
             contenders={contenders}
+            playerVoteVoters={playerVoteVoters}
             defaultPlayerVotes={defaultPlayerVotes}
             effectivePlayerVotes={effectivePlayerVotes}
             setPlayerVotes={setPlayerVotes}

@@ -57,6 +57,14 @@ function isContender(player) {
   return player.inHand && !player.folded && !player.isJudge
 }
 
+function isPlayerVoteVoter(player) {
+  return !player.isJudge
+}
+
+function getPlayerVoteVoterList(state) {
+  return state.players.filter((player) => isPlayerVoteVoter(player))
+}
+
 function isActionablePlayer(player) {
   return isContender(player) && !player.allIn && player.stack > 0
 }
@@ -842,7 +850,7 @@ function moveToShowdownVoting(state) {
   if (!judge) {
     addLog(
       state,
-      'Showdown voting begins with a neutral judge word. A clear Player Vote majority wins; otherwise Similarity decides.',
+      'Showdown voting begins with a neutral judge word. The table votes; a clear Player Vote majority wins, otherwise Similarity decides.',
     )
     return state
   }
@@ -871,7 +879,7 @@ function moveToDebateStage(state) {
   } else if (state.showdownMode === 'neutralVoting') {
     addLog(
       state,
-      `Debate stage begins. Neutral judge word "${state.judgeWord}" is live because all-in contenders are protected. A clear Player Vote majority wins; otherwise Similarity decides.`,
+      `Debate stage begins. Neutral judge word "${state.judgeWord}" is live because all-in contenders are protected. The table votes; a clear Player Vote majority wins, otherwise Similarity decides.`,
     )
   } else {
     addLog(
@@ -1389,12 +1397,13 @@ function rankContenderIdsBy(state, contenderIds, scoreFn) {
 
 function buildVotingResolution(state, playerVotes, judgeVote) {
   const contenders = getContenderList(state)
+  const playerVoteVoters = getPlayerVoteVoterList(state)
   const contenderIds = contenders.map((player) => player.id)
   const contenderIdSet = new Set(contenderIds)
 
   const voteCountByPlayerId = new Map(contenderIds.map((id) => [id, 0]))
 
-  for (const voter of contenders) {
+  for (const voter of playerVoteVoters) {
     const voteTargetId = Number(playerVotes[voter.id])
 
     if (!contenderIdSet.has(voteTargetId)) {
@@ -1422,6 +1431,11 @@ function buildVotingResolution(state, playerVotes, judgeVote) {
       getSimilarityScore(contender.holeWord, state.judgeWord),
     )
   }
+
+  const maxPlayerVoteCount = Math.max(...Array.from(voteCountByPlayerId.values()))
+  const playerVoteLeaderIds = contenderIds.filter((playerId) => {
+    return (voteCountByPlayerId.get(playerId) ?? 0) === maxPlayerVoteCount
+  })
 
   const playerVoteWinner = rankContenderIdsBy(state, contenderIds, (playerId) => {
     const votes = voteCountByPlayerId.get(playerId) ?? 0
@@ -1488,6 +1502,7 @@ function buildVotingResolution(state, playerVotes, judgeVote) {
 
   return {
     contenders,
+    playerVoteVoters,
     winnerId,
     winnerReason,
     rankedPlayerIds,
@@ -1497,17 +1512,19 @@ function buildVotingResolution(state, playerVotes, judgeVote) {
     voteCountByPlayerId,
     similarityByPlayerId,
     categoryWinsByPlayerId,
+    playerVoteTieBrokenBySimilarity: playerVoteLeaderIds.length > 1,
   }
 }
 
 function buildNeutralVotingResolution(state, playerVotes) {
   const contenders = getContenderList(state)
+  const playerVoteVoters = getPlayerVoteVoterList(state)
   const contenderIds = contenders.map((player) => player.id)
   const contenderIdSet = new Set(contenderIds)
 
   const voteCountByPlayerId = new Map(contenderIds.map((id) => [id, 0]))
 
-  for (const voter of contenders) {
+  for (const voter of playerVoteVoters) {
     const voteTargetId = Number(playerVotes[voter.id])
 
     if (!contenderIdSet.has(voteTargetId)) {
@@ -1541,7 +1558,7 @@ function buildNeutralVotingResolution(state, playerVotes) {
     return (voteCountByPlayerId.get(playerId) ?? 0) === maxVoteCount
   })
   const clearMajorityWinner =
-    topVotePlayerIds.length === 1 && maxVoteCount > contenders.length / 2
+    topVotePlayerIds.length === 1 && maxVoteCount > playerVoteVoters.length / 2
       ? topVotePlayerIds[0]
       : null
 
@@ -1581,6 +1598,7 @@ function buildNeutralVotingResolution(state, playerVotes) {
 
   return {
     contenders,
+    playerVoteVoters,
     winnerId,
     winnerReason,
     rankedPlayerIds,
@@ -1836,6 +1854,7 @@ export function resolveShowdownVotes(previousState, payload) {
       playerVoteWinnerId: resolution.playerVoteWinner,
       judgeVoteWinnerId: resolution.judgeVoteWinner,
       similarityWinnerId: resolution.similarityWinner,
+      playerVoteTieBrokenBySimilarity: resolution.playerVoteTieBrokenBySimilarity,
     },
     winner: {
       playerId: winner.id,
@@ -1854,6 +1873,13 @@ export function resolveShowdownVotes(previousState, payload) {
     state,
     `Category winners -> Player Vote: ${state.players.find((player) => player.id === resolution.playerVoteWinner).name}, Judge Vote: ${state.players.find((player) => player.id === resolution.judgeVoteWinner).name}, Similarity: ${state.players.find((player) => player.id === resolution.similarityWinner).name}.`,
   )
+
+  if (resolution.playerVoteTieBrokenBySimilarity) {
+    addLog(
+      state,
+      `Player Vote was tied, so Similarity breaks the Player Vote category in favor of ${state.players.find((player) => player.id === resolution.playerVoteWinner).name}.`,
+    )
+  }
 
   addLog(state, `Winner logic -> ${buildWinnerExplanation(resolution, winner)}`)
 
@@ -1971,6 +1997,10 @@ export function getJudgePlayer(state) {
 
 export function getContenders(state) {
   return getContenderList(state)
+}
+
+export function getPlayerVoteVoters(state) {
+  return getPlayerVoteVoterList(state)
 }
 
 export function getPotSummary(state) {

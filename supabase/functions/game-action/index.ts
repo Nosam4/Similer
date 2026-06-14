@@ -130,9 +130,9 @@ function buildVotesPayload(voteRows: Array<{ vote_type: string; voter_player_id:
   }
 }
 
-function getContenderIds(game: any) {
+function getPlayerVoteVoterIds(game: any) {
   return game.players
-    .filter((player: any) => player.inHand && !player.folded && !player.isJudge)
+    .filter((player: any) => !player.isJudge)
     .map((player: any) => Number(player.id))
 }
 
@@ -334,7 +334,7 @@ async function saveGameState({
 
 async function fetchVotesForResolution(serviceClient: any, game: any, roomId: string) {
   const handNumber = Number(game.handNumber)
-  const contenderIds = getContenderIds(game)
+  const playerVoteVoterIds = getPlayerVoteVoterIds(game)
   const judgeId = game.judgePlayerId === null || game.judgePlayerId === undefined ? null : Number(game.judgePlayerId)
 
   const { data: voteRows, error } = await serviceClient
@@ -349,8 +349,8 @@ async function fetchVotesForResolution(serviceClient: any, game: any, roomId: st
   const playerVoteRows = rows.filter((row) => row.vote_type === 'player')
   const judgeVoteRows = rows.filter((row) => row.vote_type === 'judge')
 
-  for (const contenderId of contenderIds) {
-    if (!playerVoteRows.some((row) => Number(row.voter_player_id) === contenderId)) {
+  for (const voterId of playerVoteVoterIds) {
+    if (!playerVoteRows.some((row) => Number(row.voter_player_id) === voterId)) {
       throw new Error('Waiting for all player votes.')
     }
   }
@@ -361,7 +361,7 @@ async function fetchVotesForResolution(serviceClient: any, game: any, roomId: st
 
   return rows.filter((row) => {
     if (row.vote_type === 'player') {
-      return contenderIds.includes(Number(row.voter_player_id))
+      return playerVoteVoterIds.includes(Number(row.voter_player_id))
     }
 
     return judgeId !== null && Number(row.voter_player_id) === judgeId
