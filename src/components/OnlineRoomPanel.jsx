@@ -171,6 +171,7 @@ function OnlineRoomPanel({
 
     return seats
   }, [players, room?.max_players])
+  const isRoomPlaying = room?.status === 'playing'
 
   async function handleCreateRoom() {
     const trimmedName = displayName.trim() || DEFAULT_DISPLAY_NAME
@@ -267,13 +268,15 @@ function OnlineRoomPanel({
   }
 
   return (
-    <section className="online-room-panel">
+    <section className={`online-room-panel${isRoomPlaying ? ' compact' : ''}`}>
       <h3>Online Multiplayer (Supabase Rooms)</h3>
 
-      <p className="online-room-copy">
-        Create or join a room for up to 8 players. Seats, ready state, and gameplay
-        sync live through Supabase.
-      </p>
+      {!isRoomPlaying ? (
+        <p className="online-room-copy">
+          Create or join a room for up to 8 players. Seats, ready state, and gameplay
+          sync live through Supabase.
+        </p>
+      ) : null}
 
       {!isSupabaseConfigured ? (
         <p className="online-room-copy">
@@ -282,19 +285,21 @@ function OnlineRoomPanel({
         </p>
       ) : null}
 
-      <div className="online-room-controls">
-        <label>
-          Display Name
-          <input
-            type="text"
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-            maxLength={32}
-            placeholder="Player name"
-            disabled={booting || busy}
-          />
-        </label>
-      </div>
+      {!isRoomPlaying ? (
+        <div className="online-room-controls">
+          <label>
+            Display Name
+            <input
+              type="text"
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              maxLength={32}
+              placeholder="Player name"
+              disabled={booting || busy}
+            />
+          </label>
+        </div>
+      ) : null}
 
       {!isSupabaseConfigured ? null : !room ? (
         <div className="online-room-actions">
@@ -331,10 +336,12 @@ function OnlineRoomPanel({
             </b>
           </p>
           <div className="online-room-actions">
-            <button type="button" disabled={busy || !myPlayer} onClick={handleToggleReady}>
-              {myPlayer?.is_ready ? 'Mark Not Ready' : 'Mark Ready'}
-            </button>
-            {room.host_user_id === userId ? (
+            {!isRoomPlaying ? (
+              <button type="button" disabled={busy || !myPlayer} onClick={handleToggleReady}>
+                {myPlayer?.is_ready ? 'Mark Not Ready' : 'Mark Ready'}
+              </button>
+            ) : null}
+            {!isRoomPlaying && room.host_user_id === userId ? (
               <button
                 type="button"
                 disabled={
@@ -360,7 +367,7 @@ function OnlineRoomPanel({
               Leave Room
             </button>
           </div>
-          {room.host_user_id === userId && players.length < 3 ? (
+          {!isRoomPlaying && room.host_user_id === userId && players.length < 3 ? (
             <p className="online-room-copy">
               Need at least 3 players to start this game mode.
             </p>
@@ -368,7 +375,7 @@ function OnlineRoomPanel({
         </div>
       )}
 
-      {!isSupabaseConfigured ? null : (
+      {!isSupabaseConfigured || isRoomPlaying ? null : (
         <div className="online-room-seats">
           {seatRows.map((seat) => (
             <div

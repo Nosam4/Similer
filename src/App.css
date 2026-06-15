@@ -23,6 +23,212 @@
   color: var(--subtle);
 }
 
+.poker-table-shell {
+  display: grid;
+  gap: 10px;
+}
+
+.poker-table-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.poker-table-meta span {
+  border: 1px solid rgba(216, 200, 160, 0.82);
+  border-radius: 999px;
+  background: rgba(247, 241, 221, 0.82);
+  color: #4a4032;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 6px 10px;
+}
+
+.poker-felt {
+  position: relative;
+  min-height: clamp(440px, 54vw, 620px);
+  border-radius: 34px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(69, 152, 109, 0.7), rgba(22, 100, 71, 0.86) 42%, rgba(8, 54, 39, 0.96) 72%),
+    linear-gradient(135deg, #1b6248, #0c3427);
+  border: 1px solid rgba(247, 228, 177, 0.56);
+  box-shadow:
+    inset 0 0 0 10px rgba(119, 75, 37, 0.62),
+    inset 0 0 0 18px rgba(229, 177, 94, 0.2),
+    0 24px 60px rgba(7, 29, 20, 0.28);
+}
+
+.poker-felt-inner {
+  position: absolute;
+  inset: 16%;
+  border: 1px solid rgba(247, 228, 177, 0.14);
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, transparent 49%, rgba(247, 228, 177, 0.08) 50%, transparent 51%),
+    radial-gradient(circle, rgba(255, 255, 255, 0.06), transparent 62%);
+  opacity: 0.78;
+}
+
+.table-center {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  width: min(360px, 42%);
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(247, 228, 177, 0.28);
+  border-radius: 22px;
+  padding: 18px;
+  display: grid;
+  gap: 6px;
+  text-align: center;
+  color: #f9f2d8;
+  background: rgba(7, 42, 30, 0.46);
+  box-shadow: inset 0 0 24px rgba(255, 255, 255, 0.05);
+}
+
+.table-center-kicker {
+  color: rgba(247, 228, 177, 0.72);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.table-center strong {
+  font-size: clamp(1.4rem, 3vw, 2.2rem);
+  line-height: 1;
+}
+
+.table-center span:last-child {
+  color: rgba(249, 242, 216, 0.84);
+}
+
+.seat-ring {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+}
+
+.table-seat {
+  position: absolute;
+  top: var(--seat-y);
+  left: var(--seat-x);
+  width: clamp(170px, 19vw, 230px);
+  transform: translate(-50%, -50%);
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  border: 1px solid rgba(247, 228, 177, 0.5);
+  border-radius: 18px;
+  padding: 8px;
+  color: #f9f2d8;
+  background: rgba(8, 26, 23, 0.9);
+  box-shadow:
+    0 12px 26px rgba(4, 14, 11, 0.28),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.table-seat.active {
+  border-color: #f4d36f;
+  box-shadow:
+    0 0 0 3px rgba(244, 211, 111, 0.22),
+    0 14px 30px rgba(4, 14, 11, 0.34);
+}
+
+.table-seat.judge {
+  border-color: var(--chip-gold);
+}
+
+.table-seat.folded,
+.table-seat.busted {
+  opacity: 0.58;
+}
+
+.seat-avatar {
+  width: 42px;
+  height: 42px;
+  border: 2px solid rgba(247, 228, 177, 0.78);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #09291f;
+  background: linear-gradient(135deg, #f7e4b1, #d2a84e);
+  font-weight: 900;
+}
+
+.seat-content {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.seat-heading {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.seat-heading h2 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.96rem;
+}
+
+.seat-numbers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.seat-numbers span {
+  border: 1px solid rgba(247, 228, 177, 0.18);
+  border-radius: 8px;
+  padding: 4px 5px;
+  display: grid;
+  color: rgba(249, 242, 216, 0.68);
+  font-size: 0.64rem;
+  text-transform: uppercase;
+}
+
+.seat-numbers b {
+  color: #fff8df;
+  font-size: 0.92rem;
+  line-height: 1.05;
+}
+
+.seat-footer {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: 0.82rem;
+}
+
+.seat-footer span,
+.seat-footer strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seat-footer span {
+  color: rgba(249, 242, 216, 0.7);
+  font-weight: 500;
+}
+
+.seat-footer strong {
+  color: #fff8df;
+}
+
 .status-row {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -317,6 +523,25 @@ button.tiny {
   gap: 10px;
 }
 
+.online-room-panel.compact {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 12px;
+}
+
+.online-room-panel.compact h3 {
+  font-size: 0.98rem;
+}
+
+.online-room-panel.compact .online-room-live {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .online-room-copy {
   color: rgba(248, 246, 239, 0.82);
 }
@@ -569,6 +794,14 @@ button.tiny {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .poker-felt {
+    min-height: 560px;
+  }
+
+  .table-seat {
+    width: clamp(154px, 24vw, 200px);
+  }
+
   .players-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -581,6 +814,61 @@ button.tiny {
   .judge-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .poker-table-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .poker-table-meta span {
+    text-align: center;
+  }
+
+  .poker-felt {
+    min-height: 0;
+    overflow: visible;
+    padding: 14px;
+    display: grid;
+    gap: 12px;
+    border-radius: 22px;
+    box-shadow:
+      inset 0 0 0 6px rgba(119, 75, 37, 0.55),
+      inset 0 0 0 11px rgba(229, 177, 94, 0.18),
+      0 18px 40px rgba(7, 29, 20, 0.22);
+  }
+
+  .poker-felt-inner {
+    display: none;
+  }
+
+  .table-center {
+    position: static;
+    width: auto;
+    transform: none;
+  }
+
+  .seat-ring {
+    position: relative;
+    inset: auto;
+    display: grid;
+    grid-auto-columns: minmax(230px, 78vw);
+    grid-auto-flow: column;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 2px 2px 8px;
+    scroll-snap-type: x proximity;
+  }
+
+  .table-seat {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: auto;
+    transform: none;
+    scroll-snap-align: start;
   }
 }
 

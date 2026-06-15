@@ -21,12 +21,10 @@ import BustedPanel from './components/BustedPanel'
 import ConfettiComponent from './components/ConfettiComponent'
 import DebatePanel from './components/DebatePanel'
 import HandCompletePanel from './components/HandCompletePanel'
-import JudgeRow from './components/JudgeRow'
 import OnlineRoomPanel from './components/OnlineRoomPanel'
-import PlayersGrid from './components/PlayersGrid'
+import PokerTable from './components/PokerTable'
 import ShowdownVotingPanel from './components/ShowdownVotingPanel'
 import StageOverlay from './components/StageOverlay'
-import StatusRow from './components/StatusRow'
 import TableHeader from './components/TableHeader'
 import TurnPanel from './components/TurnPanel'
 import {
@@ -765,23 +763,20 @@ function App() {
         <>
       <TableHeader />
 
-      <StatusRow
-        handNumber={game.handNumber}
-        phaseLabel={getPhaseLabel(game.phase)}
-        potSummary={potSummary}
-        wordBankSize={getWordBankSize()}
-        phasePulseTick={pulseTicks.phaseTile}
-      />
-
-      <JudgeRow judge={judge} judgeWord={judgeWord} pulseTick={pulseTicks.judgeRow} />
-
-      <PlayersGrid
+      <PokerTable
         players={game.players}
         dealerIndex={game.dealerIndex}
         smallBlindIndex={game.smallBlindIndex}
         bigBlindIndex={game.bigBlindIndex}
         currentPlayerIndex={game.currentPlayerIndex}
         phase={game.phase}
+        phaseLabel={getPhaseLabel(game.phase)}
+        handNumber={game.handNumber}
+        potSummary={potSummary}
+        judge={judge}
+        judgeWord={judgeWord}
+        wordBankSize={getWordBankSize()}
+        phasePulseTick={pulseTicks.phaseTile}
         handComplete={game.handComplete}
         revealByPlayerId={effectiveRevealByPlayerId}
         onToggleWordReveal={toggleWordReveal}
