@@ -23,7 +23,7 @@ function OnlineRoomPanel({
   onlineGameBusy = false,
 }) {
   const [userId, setUserId] = useState('')
-  const [displayName, setDisplayName] = useState(DEFAULT_DISPLAY_NAME)
+  const [displayName, setDisplayName] = useState('')
   const [roomCodeInput, setRoomCodeInput] = useState('')
   const [room, setRoom] = useState(null)
   const [roomState, setRoomState] = useState(null)
@@ -293,8 +293,13 @@ function OnlineRoomPanel({
               type="text"
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
+              onFocus={() => {
+                if (displayName === DEFAULT_DISPLAY_NAME) {
+                  setDisplayName('')
+                }
+              }}
               maxLength={32}
-              placeholder="Player name"
+              placeholder={DEFAULT_DISPLAY_NAME}
               disabled={booting || busy}
             />
           </label>
