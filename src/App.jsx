@@ -11,7 +11,6 @@ import {
   getPhaseLabel,
   getPlayerVoteVoters,
   getPotSummary,
-  getSimilarityForWords,
   getWordBankSize,
   resolveShowdownVotes,
   startNextHand,
@@ -154,21 +153,6 @@ function App() {
   const onlineSubmittedPlayerVoteIds = useMemo(() => {
     return buildSubmittedPlayerVoteIds(activeOnlineVoteStatusRows)
   }, [activeOnlineVoteStatusRows])
-
-  const similarityRows = useMemo(() => {
-    if (!judgeWord || !isShowdownVoting) {
-      return []
-    }
-
-    return contenders.map((player) => {
-      return {
-        playerId: player.id,
-        playerName: player.name,
-        playerWord: player.holeWord,
-        similarity: getSimilarityForWords(player.holeWord, judgeWord),
-      }
-    })
-  }, [contenders, isShowdownVoting, judgeWord])
 
   const defaultPlayerVotes = useMemo(() => {
     if (!isShowdownVoting || contenders.length === 0) {
@@ -856,7 +840,6 @@ function App() {
             setPlayerVotes={setPlayerVotes}
             effectiveJudgeVote={effectiveJudgeVote}
             setJudgeVote={setJudgeVote}
-            similarityRows={similarityRows}
             canResolveVotes={canResolveVotes}
             onResolveVotes={resolveVotes}
             pulseTick={pulseTicks.showdownPanel}

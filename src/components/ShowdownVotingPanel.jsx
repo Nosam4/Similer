@@ -1,5 +1,3 @@
-import { formatScore } from './uiHelpers'
-
 function ShowdownVotingPanel({
   judge,
   judgeWord = null,
@@ -10,7 +8,6 @@ function ShowdownVotingPanel({
   setPlayerVotes,
   effectiveJudgeVote,
   setJudgeVote,
-  similarityRows,
   canResolveVotes,
   onResolveVotes,
   pulseTick = 0,
@@ -220,16 +217,6 @@ function ShowdownVotingPanel({
         ) : (
           <p>No judge vote this hand.</p>
         )}
-      </div>
-
-      <div className="showdown-grid">
-        {similarityRows.map((row) => (
-          <p key={row.playerId}>
-            Similarity | {row.playerName} ({row.playerWord})
-            {' -> '}
-            {displayJudgeWord}: {formatScore(row.similarity)}
-          </p>
-        ))}
       </div>
 
       <button type="button" disabled={!canResolveVotes} onClick={onResolveVotes}>
