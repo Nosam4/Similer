@@ -23,6 +23,54 @@
   color: var(--subtle);
 }
 
+.local-test-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid rgba(216, 200, 160, 0.82);
+  border-radius: 14px;
+  background: rgba(247, 241, 221, 0.72);
+  padding: 10px 12px;
+}
+
+.local-test-copy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  color: #4a4032;
+}
+
+.local-test-copy strong {
+  font-size: 0.92rem;
+}
+
+.local-test-copy span {
+  color: var(--subtle);
+  font-size: 0.88rem;
+}
+
+.local-test-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.local-test-buttons button {
+  min-width: 38px;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-weight: 800;
+}
+
+.local-test-buttons button.active {
+  border-color: var(--chip-gold);
+  background: #204d3b;
+  color: #fff8df;
+}
+
 .poker-table-shell {
   display: grid;
   gap: 10px;

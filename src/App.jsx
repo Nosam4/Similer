@@ -21,6 +21,7 @@ import BustedPanel from './components/BustedPanel'
 import ConfettiComponent from './components/ConfettiComponent'
 import DebatePanel from './components/DebatePanel'
 import HandCompletePanel from './components/HandCompletePanel'
+import LocalTestControls from './components/LocalTestControls'
 import OnlineRoomPanel from './components/OnlineRoomPanel'
 import PokerTable from './components/PokerTable'
 import ShowdownVotingPanel from './components/ShowdownVotingPanel'
@@ -41,6 +42,7 @@ import {
 } from './multiplayer/privateGameState'
 
 const PLAYER_NAMES = ['North', 'East', 'South', 'West']
+const LOCAL_TEST_PLAYER_NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 const STARTING_STACK = 400
 const SMALL_BLIND = 5
 const BIG_BLIND = 10
@@ -80,6 +82,10 @@ function getRestartPlayerNames(game, onlineSession) {
   }
 
   return game.players.map((player) => player.name)
+}
+
+function getLocalTestPlayerNames(playerCount) {
+  return LOCAL_TEST_PLAYER_NAMES.slice(0, playerCount)
 }
 
 function App() {
@@ -438,6 +444,24 @@ function App() {
     }
   }
 
+  function restartLocalTestGame(playerCount) {
+    const nextGame = createInitialGame({
+      playerNames: getLocalTestPlayerNames(playerCount),
+      startingStack: STARTING_STACK,
+      smallBlind: SMALL_BLIND,
+      bigBlind: BIG_BLIND,
+    })
+
+    setLocalGame(nextGame)
+    setAmountInput('')
+    setErrorText('')
+    setRevealByPlayerId({})
+    setPlayerVotes({})
+    setJudgeVote('')
+    setPulseTicks(INITIAL_PULSE_TICKS)
+    previousPhaseRef.current = null
+  }
+
   async function resolveVotes() {
     try {
       if (isOnlinePlaying && !canResolveVotes) {
@@ -750,6 +774,13 @@ function App() {
         onPrivateDataChange={handlePrivateDataChange}
         onlineGameBusy={onlineGameBusy}
       />
+
+      {!isOnlineRoomConnected ? (
+        <LocalTestControls
+          playerCount={localGame.players.length}
+          onSelectPlayerCount={restartLocalTestGame}
+        />
+      ) : null}
 
       {!shouldShowGameTable ? (
         <section className="controls">
