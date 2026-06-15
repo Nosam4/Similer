@@ -781,6 +781,7 @@ function App() {
         revealByPlayerId={effectiveRevealByPlayerId}
         onToggleWordReveal={toggleWordReveal}
         showWordControls={!isOnlinePlaying}
+        viewerPlayerId={isOnlinePlaying ? myOnlineSeatIndex : null}
       />
 
       <section className="controls">

@@ -56,6 +56,24 @@ function getSeatLayout(playerCount) {
   return SEAT_LAYOUTS[playerCount] ?? SEAT_LAYOUTS[8]
 }
 
+function getPlayerIdAtIndex(players, index) {
+  if (index === null || index === undefined) {
+    return null
+  }
+
+  return players[index]?.id ?? null
+}
+
+function rotatePlayersForViewer(players, viewerPlayerId) {
+  const viewerIndex = players.findIndex((player) => player.id === viewerPlayerId)
+
+  if (viewerIndex <= 0) {
+    return players
+  }
+
+  return [...players.slice(viewerIndex), ...players.slice(0, viewerIndex)]
+}
+
 function PokerTable({
   players,
   dealerIndex,
@@ -74,8 +92,14 @@ function PokerTable({
   revealByPlayerId,
   onToggleWordReveal,
   showWordControls = true,
+  viewerPlayerId = null,
 }) {
-  const layout = getSeatLayout(players.length)
+  const visualPlayers = rotatePlayersForViewer(players, viewerPlayerId)
+  const layout = getSeatLayout(visualPlayers.length)
+  const dealerPlayerId = getPlayerIdAtIndex(players, dealerIndex)
+  const smallBlindPlayerId = getPlayerIdAtIndex(players, smallBlindIndex)
+  const bigBlindPlayerId = getPlayerIdAtIndex(players, bigBlindIndex)
+  const currentPlayerId = getPlayerIdAtIndex(players, currentPlayerIndex)
   const judgeText = judge
     ? `${judge.name}: ${judge.holeWord ?? judgeWord ?? 'revealed soon'}`
     : judgeWord
@@ -106,13 +130,13 @@ function PokerTable({
           <span>{judgeText}</span>
         </div>
 
-        <div className="seat-ring" style={{ '--seat-count': players.length }}>
-          {players.map((player, index) => {
+        <div className="seat-ring" style={{ '--seat-count': visualPlayers.length }}>
+          {visualPlayers.map((player, index) => {
             const position = layout[index] ?? layout[layout.length - 1]
-            const isDealer = dealerIndex === index
-            const isSmallBlind = smallBlindIndex === index
-            const isBigBlind = bigBlindIndex === index
-            const isActor = currentPlayerIndex === index
+            const isDealer = dealerPlayerId === player.id
+            const isSmallBlind = smallBlindPlayerId === player.id
+            const isBigBlind = bigBlindPlayerId === player.id
+            const isActor = currentPlayerId === player.id
             const forceWordVisible =
               player.isJudge || phase === 'debate' || phase === 'showdownVoting' || handComplete
             const isWordVisible = forceWordVisible || revealByPlayerId[player.id]
