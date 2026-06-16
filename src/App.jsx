@@ -15,6 +15,7 @@ import {
   resolveShowdownVotes,
   startNextHand,
 } from './wordgame/engine'
+import { DEFAULT_WORD_PACK_ID, WORD_PACKS, getWordPackById } from './wordgame/wordPacks'
 import ActionLogPanel from './components/ActionLogPanel'
 import BustedPanel from './components/BustedPanel'
 import ConfettiComponent from './components/ConfettiComponent'
@@ -46,6 +47,7 @@ const STARTING_STACK = 400
 const SMALL_BLIND = 5
 const BIG_BLIND = 10
 const TURN_WAIT_ERROR = 'It is not your turn yet.'
+const DEFAULT_LOCAL_WORD_PACK = getWordPackById(DEFAULT_WORD_PACK_ID)
 const INITIAL_PULSE_TICKS = {
   phaseTile: 0,
   judgeRow: 0,
@@ -94,8 +96,10 @@ function App() {
       startingStack: STARTING_STACK,
       smallBlind: SMALL_BLIND,
       bigBlind: BIG_BLIND,
+      wordPack: DEFAULT_LOCAL_WORD_PACK,
     })
   })
+  const [localWordPackId, setLocalWordPackId] = useState(DEFAULT_WORD_PACK_ID)
   const [amountInput, setAmountInput] = useState('')
   const [errorText, setErrorText] = useState('')
   const [revealByPlayerId, setRevealByPlayerId] = useState({})
@@ -127,6 +131,7 @@ function App() {
   const hydratedOnlineGame = useMemo(() => {
     return hydrateGameWithWords(onlineGame, activeOnlineWordsByPlayerId)
   }, [activeOnlineWordsByPlayerId, onlineGame])
+  const localWordPack = useMemo(() => getWordPackById(localWordPackId), [localWordPackId])
 
   const isOnlineRoomConnected = Boolean(onlineSession?.room)
   const isOnlinePlaying = Boolean(onlineSession?.room?.status === 'playing' && hydratedOnlineGame)
@@ -413,6 +418,7 @@ function App() {
           startingStack: STARTING_STACK,
           smallBlind: SMALL_BLIND,
           bigBlind: BIG_BLIND,
+          wordPack: localWordPack,
         })
         setLocalGame(nextGame)
       }
@@ -428,12 +434,13 @@ function App() {
     }
   }
 
-  function restartLocalTestGame(playerCount) {
+  function restartLocalTestGame(playerCount, wordPack = localWordPack) {
     const nextGame = createInitialGame({
       playerNames: getLocalTestPlayerNames(playerCount),
       startingStack: STARTING_STACK,
       smallBlind: SMALL_BLIND,
       bigBlind: BIG_BLIND,
+      wordPack,
     })
 
     setLocalGame(nextGame)
@@ -444,6 +451,13 @@ function App() {
     setJudgeVote('')
     setPulseTicks(INITIAL_PULSE_TICKS)
     previousPhaseRef.current = null
+  }
+
+  function handleSelectLocalWordPack(wordPackId) {
+    const nextWordPack = getWordPackById(wordPackId)
+
+    setLocalWordPackId(nextWordPack.id)
+    restartLocalTestGame(localGame.players.length, nextWordPack)
   }
 
   async function resolveVotes() {
@@ -763,6 +777,9 @@ function App() {
         <LocalTestControls
           playerCount={localGame.players.length}
           onSelectPlayerCount={restartLocalTestGame}
+          wordPacks={WORD_PACKS}
+          selectedWordPackId={localWordPackId}
+          onSelectWordPack={handleSelectLocalWordPack}
         />
       ) : null}
 
@@ -790,7 +807,7 @@ function App() {
         potSummary={potSummary}
         judge={judge}
         judgeWord={judgeWord}
-        wordBankSize={getWordBankSize()}
+        wordBankSize={getWordBankSize(game)}
         phasePulseTick={pulseTicks.phaseTile}
         handComplete={game.handComplete}
         revealByPlayerId={effectiveRevealByPlayerId}

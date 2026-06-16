@@ -16,9 +16,32 @@ const CATEGORY_LABELS = {
 
 const ACTIVE_JUDGE_TAX_RATE = 0.2
 const FOLDED_JUDGE_TAX_RATE = 0.1
+const MIN_WORD_PACK_SIZE = 8
 
-const WORDS = wordBankData.words
-const WORD_SET = new Set(WORDS)
+const DEFAULT_WORDS = wordBankData.words
+const DEFAULT_WORD_PACK = {
+  id: 'default',
+  name: 'Default',
+  words: DEFAULT_WORDS,
+}
+
+function normalizeWordPack(wordPack = DEFAULT_WORD_PACK) {
+  const words = Array.isArray(wordPack.words)
+    ? [...new Set(wordPack.words.map((word) => String(word).trim().toLowerCase()))].filter(
+        Boolean,
+      )
+    : DEFAULT_WORDS
+
+  return {
+    id: wordPack.id ?? DEFAULT_WORD_PACK.id,
+    name: wordPack.name ?? DEFAULT_WORD_PACK.name,
+    words: words.length >= MIN_WORD_PACK_SIZE ? words : DEFAULT_WORDS,
+  }
+}
+
+function getWordPool(state) {
+  return state.wordPack?.words?.length >= MIN_WORD_PACK_SIZE ? state.wordPack.words : DEFAULT_WORDS
+}
 
 function deepClone(value) {
   return structuredClone(value)
@@ -185,7 +208,7 @@ function getSimilarityScoreForPlayerId(state, playerId) {
     return Number.NEGATIVE_INFINITY
   }
 
-  return getSimilarityScore(player.holeWord, state.judgeWord)
+  return getSimilarityScore(state, player.holeWord, state.judgeWord)
 }
 
 function getSimilarityScoreStatus(player) {
@@ -216,7 +239,7 @@ function buildAllSimilarityScores(state) {
         playerId: player.id,
         playerName: player.name,
         word: player.holeWord,
-        similarity: getSimilarityScore(player.holeWord, state.judgeWord),
+        similarity: getSimilarityScore(state, player.holeWord, state.judgeWord),
         status: getSimilarityScoreStatus(player),
         eligible: isContender(player),
         folded: player.folded,
@@ -508,8 +531,10 @@ function getSeatIndexByPlayerId(state) {
   return lookup
 }
 
-function getSimilarityScore(playerWord, judgeWord) {
-  if (!WORD_SET.has(playerWord) || !WORD_SET.has(judgeWord)) {
+function getSimilarityScore(state, playerWord, judgeWord) {
+  const wordSet = new Set(getWordPool(state))
+
+  if (!wordSet.has(playerWord) || !wordSet.has(judgeWord)) {
     return Number.NEGATIVE_INFINITY
   }
 
@@ -536,8 +561,9 @@ function drawNeutralJudgeWord(state, rng = Math.random) {
   const usedWords = new Set(
     state.players.map((player) => player.holeWord).filter((word) => word),
   )
-  const availableWords = WORDS.filter((word) => !usedWords.has(word))
-  const pool = availableWords.length > 0 ? availableWords : WORDS
+  const words = getWordPool(state)
+  const availableWords = words.filter((word) => !usedWords.has(word))
+  const pool = availableWords.length > 0 ? availableWords : words
 
   return pool[Math.floor(rng() * pool.length)]
 }
@@ -766,7 +792,7 @@ function resolveSimilarityDuel(state) {
   for (const contender of contenders) {
     similarityByPlayerId.set(
       contender.id,
-      getSimilarityScore(contender.holeWord, state.judgeWord),
+      getSimilarityScore(state, contender.holeWord, state.judgeWord),
     )
   }
 
@@ -1343,7 +1369,7 @@ function setUpNewHand(state, rng = Math.random) {
     preflopFirstActor = nextSeat(state.players, bigBlindIndex, (player) => player.inHand)
   }
 
-  const shuffledWords = shuffle(WORDS, rng)
+  const shuffledWords = shuffle(getWordPool(state), rng)
   let wordCursor = 0
 
   for (const player of state.players) {
@@ -1436,7 +1462,7 @@ function buildVotingResolution(state, playerVotes, judgeVote) {
   for (const contender of contenders) {
     similarityByPlayerId.set(
       contender.id,
-      getSimilarityScore(contender.holeWord, state.judgeWord),
+      getSimilarityScore(state, contender.holeWord, state.judgeWord),
     )
   }
 
@@ -1551,7 +1577,7 @@ function buildNeutralVotingResolution(state, playerVotes) {
   for (const contender of contenders) {
     similarityByPlayerId.set(
       contender.id,
-      getSimilarityScore(contender.holeWord, state.judgeWord),
+      getSimilarityScore(state, contender.holeWord, state.judgeWord),
     )
   }
 
@@ -1633,6 +1659,7 @@ export function createInitialGame(options = {}) {
     startingStack = 400,
     smallBlind = 5,
     bigBlind = 10,
+    wordPack = DEFAULT_WORD_PACK,
     rng = Math.random,
   } = options
 
@@ -1663,6 +1690,7 @@ export function createInitialGame(options = {}) {
     handComplete: false,
     tableComplete: false,
     showdown: null,
+    wordPack: normalizeWordPack(wordPack),
     log: [],
   }
 
@@ -2019,10 +2047,10 @@ export function getPotSummary(state) {
   }
 }
 
-export function getSimilarityForWords(playerWord, judgeWord) {
-  return getSimilarityScore(playerWord, judgeWord)
+export function getSimilarityForWords(playerWord, judgeWord, state = null) {
+  return getSimilarityScore(state ?? { wordPack: DEFAULT_WORD_PACK }, playerWord, judgeWord)
 }
 
-export function getWordBankSize() {
-  return WORDS.length
+export function getWordBankSize(state = null) {
+  return getWordPool(state ?? { wordPack: DEFAULT_WORD_PACK }).length
 }

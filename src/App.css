@@ -52,6 +52,30 @@
   font-size: 0.88rem;
 }
 
+.local-word-pack-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  color: #4a4032;
+  font-size: 0.88rem;
+}
+
+.local-word-pack-select span {
+  color: var(--subtle);
+}
+
+.local-word-pack-select select {
+  min-width: 190px;
+  border: 1px solid rgba(135, 109, 54, 0.42);
+  border-radius: 999px;
+  background: #fffaf0;
+  color: #2b241c;
+  font: inherit;
+  font-weight: 750;
+  padding: 7px 12px;
+}
+
 .local-test-buttons {
   display: flex;
   flex-wrap: wrap;
