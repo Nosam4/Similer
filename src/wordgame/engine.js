@@ -2,8 +2,8 @@ import wordBankData from './wordBank.json'
 
 const PHASE_LABELS = {
   preflop: 'Preflop',
-  postflop: 'Postflop (Judge Word Live)',
-  debate: 'Debate Stage',
+  postflop: 'Opening Statements',
+  debate: 'Closing Arguments',
   showdownVoting: 'Showdown Voting',
   handComplete: 'Hand Complete',
 }
@@ -908,17 +908,17 @@ function moveToDebateStage(state) {
   if (state.showdownMode === 'similarityDuel') {
     addLog(
       state,
-      `Debate stage begins. Final Duel words are revealed against neutral judge word "${state.judgeWord}". Similarity will decide the winner after arguments.`,
+      `Closing arguments begin. Final Duel words are revealed against neutral judge word "${state.judgeWord}". Similarity will decide the winner after arguments.`,
     )
   } else if (state.showdownMode === 'neutralVoting') {
     addLog(
       state,
-      `Debate stage begins. Neutral judge word "${state.judgeWord}" is live because all-in contenders are protected. The table votes; a clear Player Vote majority wins, otherwise Similarity decides.`,
+      `Closing arguments begin. Neutral judge word "${state.judgeWord}" is live because all-in contenders are protected. The table votes; a clear Player Vote majority wins, otherwise Similarity decides.`,
     )
   } else {
     addLog(
       state,
-      `Debate stage begins. Contenders reveal their words and argue closest connection to "${state.judgeWord}" before voting.`,
+      `Closing arguments begin. Contenders reveal their assigned words and argue closest connection to "${state.judgeWord}" before voting.`,
     )
   }
 
@@ -1730,7 +1730,7 @@ export function completeDebateStage(previousState) {
   const state = deepClone(previousState)
 
   if (state.phase !== 'debate') {
-    throw new Error('Debate can only be completed during the debate stage.')
+    throw new Error('Closing arguments can only be completed during the closing arguments phase.')
   }
 
   if (state.showdownMode === 'similarityDuel') {

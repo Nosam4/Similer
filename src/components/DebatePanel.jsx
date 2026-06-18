@@ -21,7 +21,7 @@ function DebatePanel({
       key={`debate-panel-${pulseTick}`}
       className={`debate-panel${pulseTick > 0 ? ' stage-pulse stage-pulse-strong' : ''}`}
     >
-      <h3>Debate Stage</h3>
+      <h3>Closing Arguments</h3>
       <p>
         {judgeLabel} is <b>{judgeWord}</b>. Player words are now revealed.
       </p>
@@ -38,8 +38,8 @@ function DebatePanel({
         </p>
       ) : (
         <p>
-          Each contender should argue why their word connects most closely to
-          the judge word. When debate is done, move to voting.
+          Each contender should argue their assigned word now. No decoys, no
+          fake words, just the best case for the real connection.
         </p>
       )}
 

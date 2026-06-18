@@ -4,7 +4,7 @@ function StageOverlay({
   judgeWord,
   kicker = 'New Phase',
   wordLabel = 'Judge word',
-  message = 'Make your case. Why is your word the closest?',
+  message = 'Make your case.',
 }) {
   if (!activeKey) {
     return null

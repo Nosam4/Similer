@@ -726,18 +726,18 @@ function App() {
   const stageOverlayConfig = isJudgeWordLive
     ? {
         activeKey: `judge-word-live-${game.handNumber}-${judge?.id ?? 'neutral'}-${judgeWord}`,
-        kicker: 'Word Revealed',
-        title: 'JUDGE WORD LIVE',
+        kicker: 'Judge Word Live',
+        title: 'OPENING STATEMENTS',
         wordLabel: judge ? `${judge.name} reveals` : 'Judge word',
-        message: judge
-          ? 'Make your next bet with the word in mind.'
-          : 'Betting continues with the word revealed.',
+        message: 'Bluff here. Argue any word you want, real or fake, then bet like you mean it.',
       }
     : isDebate
       ? {
           activeKey: `debate-${game.handNumber}`,
-          title: 'DEBATE STAGE',
+          kicker: 'Words Revealed',
+          title: 'CLOSING ARGUMENTS',
           judgeWord,
+          message: 'Now argue your assigned word. No decoys. Sell the real connection.',
         }
       : null
 
