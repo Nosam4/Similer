@@ -12,6 +12,7 @@
   "dependencies": {
     "@react-hook/window-size": "^3.1.1",
     "@supabase/supabase-js": "^2.106.2",
+    "gsap": "^3.15.0",
     "react": "^19.2.6",
     "react-confetti": "^6.4.0",
     "react-dom": "^19.2.6"
