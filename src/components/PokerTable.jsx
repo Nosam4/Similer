@@ -124,7 +124,6 @@ function PokerTable({
   onToggleWordReveal,
   showWordControls = true,
   viewerPlayerId = null,
-  actionControls = null,
 }) {
   const dealerPlayerId = getPlayerIdAtIndex(players, dealerIndex)
   const currentPlayerId = getPlayerIdAtIndex(players, currentPlayerIndex)
@@ -234,8 +233,6 @@ function PokerTable({
             )
           })}
         </div>
-
-        {actionControls ? <div className="table-action-dock">{actionControls}</div> : null}
       </div>
     </section>
   )

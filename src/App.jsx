@@ -723,46 +723,6 @@ function App() {
     (isMyTurnOnline || isBustedOnline || isDebate || isShowdownVoting || game.handComplete)
   const visibleErrorText =
     shouldHideTurnWaitError ? '' : errorText
-  const isBettingPhase = game.phase === 'preflop' || game.phase === 'postflop'
-  const shouldShowBoardActionControls = Boolean(
-    actor &&
-      isBettingPhase &&
-      !game.handComplete &&
-      !isDebate &&
-      !isShowdownVoting &&
-      !isBustedOnline &&
-      (!isOnlinePlaying || isMyTurnOnline),
-  )
-  const boardActionControls = shouldShowBoardActionControls ? (
-    <>
-      <TurnPanel
-        actor={actor}
-        legal={legal}
-        potSummary={potSummary}
-        amountInput={amountInput}
-        setAmountInput={setAmountInput}
-        onRunAction={(type, amountOverride) => {
-          if (isOnlinePlaying && !isMyTurnOnline) {
-            setErrorText(TURN_WAIT_ERROR)
-            return
-          }
-
-          runAction(type, amountOverride)
-        }}
-        pulseTick={pulseTicks.turnPanel}
-      />
-      {visibleErrorText ? <p className="error-text table-action-error">{visibleErrorText}</p> : null}
-    </>
-  ) : null
-  const shouldShowControlsError = Boolean(visibleErrorText && !shouldShowBoardActionControls)
-  const shouldShowLowerControls = Boolean(
-    game.tableComplete ||
-      (isBustedOnline && !game.handComplete && !isDebate && !isShowdownVoting) ||
-      game.handComplete ||
-      isDebate ||
-      isShowdownVoting ||
-      shouldShowControlsError,
-  )
   const stageOverlayConfig = isJudgeWordLive
     ? {
         activeKey: `judge-word-live-${game.handNumber}-${judge?.id ?? 'neutral'}-${judgeWord}`,
@@ -852,10 +812,8 @@ function App() {
         onToggleWordReveal={toggleWordReveal}
         showWordControls={!isOnlinePlaying}
         viewerPlayerId={isOnlinePlaying ? myOnlineSeatIndex : null}
-        actionControls={boardActionControls}
       />
 
-      {shouldShowLowerControls ? (
       <section className="controls">
         {game.tableComplete ? (
           <div className="notice">
@@ -919,11 +877,27 @@ function App() {
             setOnlineJudgeVoteValue={setJudgeVote}
             onSubmitOnlineJudgeVote={submitOnlineJudgeVote}
           />
-        ) : null}
+        ) : (
+          <TurnPanel
+            actor={actor}
+            legal={legal}
+            potSummary={potSummary}
+            amountInput={amountInput}
+            setAmountInput={setAmountInput}
+            onRunAction={(type, amountOverride) => {
+              if (isOnlinePlaying && !isMyTurnOnline) {
+                setErrorText(TURN_WAIT_ERROR)
+                return
+              }
 
-        {shouldShowControlsError ? <p className="error-text">{visibleErrorText}</p> : null}
+              runAction(type, amountOverride)
+            }}
+            pulseTick={pulseTicks.turnPanel}
+          />
+        )}
+
+        {visibleErrorText ? <p className="error-text">{visibleErrorText}</p> : null}
       </section>
-      ) : null}
 
       <ActionLogPanel log={game.log} />
         </>
