@@ -14,8 +14,8 @@ const CORS_HEADERS = {
 }
 
 const STARTING_STACK = 400
-const SMALL_BLIND = 5
-const BIG_BLIND = 10
+const ANTE = 10
+const MIN_BET = 10
 const PUBLIC_WORD_PHASES = new Set(['debate', 'showdownVoting', 'handComplete'])
 
 function jsonResponse(body: unknown, status = 200) {
@@ -428,8 +428,8 @@ Deno.serve(async (req) => {
       nextGame = createInitialGame({
         playerNames: getRoomPlayerNames(roomPlayers),
         startingStack: payload.startingStack ?? STARTING_STACK,
-        smallBlind: payload.smallBlind ?? SMALL_BLIND,
-        bigBlind: payload.bigBlind ?? BIG_BLIND,
+        ante: payload.ante ?? ANTE,
+        bigBlind: payload.bigBlind ?? MIN_BET,
         rng,
       })
       nextStatus = 'playing'
@@ -483,8 +483,8 @@ Deno.serve(async (req) => {
         nextGame = createInitialGame({
           playerNames: getRoomPlayerNames(roomPlayers),
           startingStack: payload.startingStack ?? STARTING_STACK,
-          smallBlind: payload.smallBlind ?? SMALL_BLIND,
-          bigBlind: payload.bigBlind ?? BIG_BLIND,
+          ante: payload.ante ?? ANTE,
+          bigBlind: payload.bigBlind ?? MIN_BET,
           rng,
         })
         replaceWords = true

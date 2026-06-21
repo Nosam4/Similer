@@ -463,6 +463,29 @@ function commitChips(player, amount) {
   return committed
 }
 
+function getAnteAmount(state) {
+  const ante = Number(state.ante)
+
+  if (Number.isFinite(ante) && ante > 0) {
+    return Math.floor(ante)
+  }
+
+  return state.bigBlind
+}
+
+function commitAnte(player, amount) {
+  const committed = Math.max(0, Math.min(amount, player.stack))
+
+  player.stack -= committed
+  player.totalCommitted += committed
+
+  if (player.stack === 0 && player.inHand && !player.folded) {
+    player.allIn = true
+  }
+
+  return committed
+}
+
 function resetBettingRound(state) {
   state.currentBet = 0
   state.minRaise = state.bigBlind
@@ -1277,6 +1300,7 @@ function setUpNewHand(state, rng = Math.random) {
   state.currentPlayerIndex = null
   state.currentBet = 0
   state.minRaise = state.bigBlind
+  state.ante = getAnteAmount(state)
   state.judgePlayerId = null
   state.judgeWord = null
   state.showdownMode = null
@@ -1319,21 +1343,7 @@ function setUpNewHand(state, rng = Math.random) {
   const dealerIndex = nextSeat(state.players, dealerStartIndex, (player) => player.stack > 0)
   state.dealerIndex = dealerIndex
 
-  const activeCount = state.players.filter((player) => player.inHand).length
-
-  let smallBlindIndex
-  let bigBlindIndex
-  let preflopFirstActor
-
-  if (activeCount === 2) {
-    smallBlindIndex = dealerIndex
-    bigBlindIndex = nextSeat(state.players, dealerIndex, (player) => player.inHand)
-    preflopFirstActor = smallBlindIndex
-  } else {
-    smallBlindIndex = nextSeat(state.players, dealerIndex, (player) => player.inHand)
-    bigBlindIndex = nextSeat(state.players, smallBlindIndex, (player) => player.inHand)
-    preflopFirstActor = nextSeat(state.players, bigBlindIndex, (player) => player.inHand)
-  }
+  const preflopFirstActor = nextSeat(state.players, dealerIndex, (player) => player.inHand)
 
   const shuffledWords = shuffle(WORDS, rng)
   let wordCursor = 0
@@ -1345,32 +1355,21 @@ function setUpNewHand(state, rng = Math.random) {
     }
   }
 
-  const smallBlindPlayer = state.players[smallBlindIndex]
-  const bigBlindPlayer = state.players[bigBlindIndex]
+  for (const player of state.players) {
+    if (!player.inHand) {
+      continue
+    }
 
-  state.smallBlindIndex = smallBlindIndex
-  state.bigBlindIndex = bigBlindIndex
+    const postedAnte = commitAnte(player, state.ante)
+    addLog(state, `${player.name} antes ${postedAnte}${player.allIn ? ' (all-in)' : ''}.`)
+  }
 
-  const postedSmallBlind = commitChips(smallBlindPlayer, state.smallBlind)
-  const postedBigBlind = commitChips(bigBlindPlayer, state.bigBlind)
-
-  addLog(
-    state,
-    `${smallBlindPlayer.name} posts small blind ${postedSmallBlind}${smallBlindPlayer.allIn ? ' (all-in)' : ''}.`,
-  )
-  addLog(
-    state,
-    `${bigBlindPlayer.name} posts big blind ${postedBigBlind}${bigBlindPlayer.allIn ? ' (all-in)' : ''}.`,
-  )
-
-  state.currentBet = Math.max(
-    ...state.players.map((player) => (player.inHand ? player.betThisStreet : 0)),
-  )
+  state.currentBet = 0
   state.minRaise = state.bigBlind
 
   addLog(
     state,
-    `Words dealt. Dealer: ${state.players[dealerIndex].name}. Betting starts in preflop.`,
+    `Words dealt. Dealer: ${state.players[dealerIndex].name}. Each active player antes ${state.ante}. Betting starts in preflop.`,
   )
 
   state.currentPlayerIndex = findNextActionableIndex(state, preflopFirstActor - 1)
@@ -1623,8 +1622,8 @@ export function createInitialGame(options = {}) {
   const {
     playerNames = ['North', 'East', 'South', 'West'],
     startingStack = 400,
-    smallBlind = 5,
     bigBlind = 10,
+    ante = bigBlind,
     rng = Math.random,
   } = options
 
@@ -1647,8 +1646,9 @@ export function createInitialGame(options = {}) {
     currentPlayerIndex: null,
     currentBet: 0,
     minRaise: bigBlind,
-    smallBlind,
+    smallBlind: 0,
     bigBlind,
+    ante,
     judgePlayerId: null,
     judgeWord: null,
     showdownMode: null,
@@ -2008,6 +2008,7 @@ export function getPotSummary(state) {
     totalPot: getPotTotal(state),
     currentBet: state.currentBet,
     minRaise: state.minRaise,
+    ante: getAnteAmount(state),
   }
 }
 

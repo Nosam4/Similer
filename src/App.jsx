@@ -44,8 +44,8 @@ import {
 const PLAYER_NAMES = ['North', 'East', 'South', 'West']
 const LOCAL_TEST_PLAYER_NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 const STARTING_STACK = 400
-const SMALL_BLIND = 5
-const BIG_BLIND = 10
+const ANTE = 10
+const MIN_BET = 10
 const TURN_WAIT_ERROR = 'It is not your turn yet.'
 const DEFAULT_LOCAL_WORD_PACK = getWordPackById(DEFAULT_WORD_PACK_ID)
 const INITIAL_PULSE_TICKS = {
@@ -94,8 +94,8 @@ function App() {
     return createInitialGame({
       playerNames: PLAYER_NAMES,
       startingStack: STARTING_STACK,
-      smallBlind: SMALL_BLIND,
-      bigBlind: BIG_BLIND,
+      ante: ANTE,
+      bigBlind: MIN_BET,
       wordPack: DEFAULT_LOCAL_WORD_PACK,
     })
   })
@@ -407,8 +407,8 @@ function App() {
           command: 'startNewGame',
           payload: {
             startingStack: STARTING_STACK,
-            smallBlind: SMALL_BLIND,
-            bigBlind: BIG_BLIND,
+            ante: ANTE,
+            bigBlind: MIN_BET,
           },
         })
         applyOnlineCommandResult(result)
@@ -416,8 +416,8 @@ function App() {
         const nextGame = createInitialGame({
           playerNames: getRestartPlayerNames(game, onlineSession),
           startingStack: STARTING_STACK,
-          smallBlind: SMALL_BLIND,
-          bigBlind: BIG_BLIND,
+          ante: ANTE,
+          bigBlind: MIN_BET,
           wordPack: localWordPack,
         })
         setLocalGame(nextGame)
@@ -438,8 +438,8 @@ function App() {
     const nextGame = createInitialGame({
       playerNames: getLocalTestPlayerNames(playerCount),
       startingStack: STARTING_STACK,
-      smallBlind: SMALL_BLIND,
-      bigBlind: BIG_BLIND,
+      ante: ANTE,
+      bigBlind: MIN_BET,
       wordPack,
     })
 
@@ -637,8 +637,8 @@ function App() {
         command: 'startGame',
         payload: {
           startingStack: STARTING_STACK,
-          smallBlind: SMALL_BLIND,
-          bigBlind: BIG_BLIND,
+          ante: ANTE,
+          bigBlind: MIN_BET,
         },
       })
       applyOnlineCommandResult(result)
@@ -798,8 +798,6 @@ function App() {
       <PokerTable
         players={game.players}
         dealerIndex={game.dealerIndex}
-        smallBlindIndex={game.smallBlindIndex}
-        bigBlindIndex={game.bigBlindIndex}
         currentPlayerIndex={game.currentPlayerIndex}
         phase={game.phase}
         phaseLabel={getPhaseLabel(game.phase)}
