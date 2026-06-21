@@ -1,4 +1,8 @@
+import { useLayoutEffect, useRef, useState } from 'react'
+import { gsap } from 'gsap'
 import { summarizePlayerStatus } from './uiHelpers'
+
+const STAGE_OVERLAY_DURATION_MS = 5200
 
 const SEAT_LAYOUTS = {
   1: [{ x: 50, y: 86 }],
@@ -125,17 +129,79 @@ function PokerTable({
   showWordControls = true,
   viewerPlayerId = null,
 }) {
+  const flightCardRef = useRef(null)
+  const transferDelayRef = useRef(null)
+  const [settledTransferKey, setSettledTransferKey] = useState('')
   const dealerPlayerId = getPlayerIdAtIndex(players, dealerIndex)
   const currentPlayerId = getPlayerIdAtIndex(players, currentPlayerIndex)
-  const tablePlayers = judge ? players.filter((player) => player.id !== judge.id) : players
+  const judgeId = judge?.id ?? null
+  const judgeTransferKey = judgeId === null ? '' : `${handNumber}:${judgeId}`
+  const centerJudgeWord = judge?.holeWord ?? judgeWord
+  const isJudgeSettled = Boolean(judge && settledTransferKey === judgeTransferKey)
+  const isJudgeTransferActive = Boolean(
+    judge && centerJudgeWord && judgeTransferKey && !isJudgeSettled,
+  )
+  const tablePlayers = judge && isJudgeSettled ? players.filter((player) => player.id !== judge.id) : players
   const visualPlayers = rotatePlayersForViewer(tablePlayers, viewerPlayerId)
   const layout = getSeatLayout(visualPlayers.length)
-  const centerJudgeWord = judge?.holeWord ?? judgeWord
+  const fullVisualPlayers = rotatePlayersForViewer(players, viewerPlayerId)
+  const fullLayout = getSeatLayout(fullVisualPlayers.length)
+  const judgeFlightIndex = fullVisualPlayers.findIndex((player) => player.id === judge?.id)
+  const judgeFlightPosition =
+    judgeFlightIndex >= 0 ? fullLayout[judgeFlightIndex] ?? fullLayout[fullLayout.length - 1] : null
+  const shouldShowJudgeCenter = Boolean(centerJudgeWord && !isJudgeTransferActive)
   const centerCopy = judge
     ? `${judge.name}${dealerPlayerId === judge.id ? ' · Dealer' : ''}`
     : judgeWord
       ? 'Neutral judge word'
       : 'Judge word revealed after opening statements'
+
+  useLayoutEffect(() => {
+    if (!isJudgeTransferActive || !flightCardRef.current) {
+      return undefined
+    }
+
+    const flightCard = flightCardRef.current
+    const avatar = flightCard.querySelector('.seat-avatar-wrap')
+    const chipPanel = flightCard.querySelector('.seat-chip-panel')
+    const timeline = gsap.timeline({
+      paused: true,
+      defaults: { ease: 'power3.inOut' },
+      onComplete: () => {
+        setSettledTransferKey(judgeTransferKey)
+      },
+    })
+
+    gsap.set(flightCard, { autoAlpha: 0, scale: 1 })
+    timeline
+      .set(flightCard, { autoAlpha: 1 })
+      .to(flightCard, {
+        left: '50%',
+        top: '50%',
+        scale: 1.08,
+        duration: 1.2,
+      })
+
+    if (avatar) {
+      timeline.to(avatar, { autoAlpha: 0, scale: 0.68, duration: 0.3 }, '-=0.36')
+    }
+
+    if (chipPanel) {
+      timeline.to(chipPanel, { autoAlpha: 0, y: 8, duration: 0.24 }, '<')
+    }
+
+    timeline
+      .to(flightCard, { autoAlpha: 0, duration: 0.22 }, '+=0.08')
+
+    transferDelayRef.current = window.setTimeout(() => {
+      timeline.paused(false)
+    }, STAGE_OVERLAY_DURATION_MS)
+
+    return () => {
+      window.clearTimeout(transferDelayRef.current)
+      timeline.kill()
+    }
+  }, [isJudgeTransferActive, judgeTransferKey])
 
   return (
     <section className="poker-table-shell" aria-label="Similer table">
@@ -159,9 +225,9 @@ function PokerTable({
           <strong>{potSummary.totalPot}</strong>
         </div>
 
-        <div className={`table-center${centerJudgeWord ? ' judge-center' : ''}`} aria-label="Table center">
+        <div className={`table-center${shouldShowJudgeCenter ? ' judge-center' : ''}`} aria-label="Table center">
           <span className="table-center-kicker">Similer</span>
-          {centerJudgeWord ? (
+          {shouldShowJudgeCenter ? (
             <>
               <span className="judge-center-label">Judge Word</span>
               <strong>{centerJudgeWord}</strong>
@@ -187,13 +253,14 @@ function PokerTable({
               forceWordVisible || Boolean(revealByPlayerId[player.id]) || Boolean(isViewerPlayer && player.holeWord)
             const status = summarizePlayerStatus(player, isActor)
             const wordText = getWordText(player, isWordVisible)
+            const isTransferSource = isJudgeTransferActive && player.id === judge?.id
 
             return (
               <article
                 key={player.id}
                 className={`table-seat${isActor ? ' active' : ''}${
                   player.folded ? ' folded' : ''
-                }${player.stack <= 0 ? ' busted' : ''}`}
+                }${player.stack <= 0 ? ' busted' : ''}${isTransferSource ? ' transfer-source' : ''}`}
                 style={{ '--seat-x': `${position.x}%`, '--seat-y': `${position.y}%` }}
               >
                 <div className="seat-avatar-wrap">
@@ -233,6 +300,36 @@ function PokerTable({
             )
           })}
         </div>
+
+        {isJudgeTransferActive && judge && judgeFlightPosition ? (
+          <div
+            ref={flightCardRef}
+            className="table-seat judge-flight-card"
+            style={{
+              '--seat-x': `${judgeFlightPosition.x}%`,
+              '--seat-y': `${judgeFlightPosition.y}%`,
+            }}
+            aria-hidden="true"
+          >
+            <div className="seat-avatar-wrap">
+              <div className="seat-avatar">{judge.name.slice(0, 1).toUpperCase()}</div>
+              {dealerPlayerId === judge.id ? <span className="dealer-token">D</span> : null}
+            </div>
+
+            <div className="seat-panels">
+              <div className="seat-panel seat-word-panel">
+                <strong title={centerJudgeWord}>Word: {centerJudgeWord}</strong>
+              </div>
+              <div className="seat-panel seat-name-panel">
+                <strong title={judge.name}>{judge.name}</strong>
+              </div>
+              <div className="seat-panel seat-chip-panel">
+                <strong>{judge.stack}</strong>
+                <span>Becomes Judge</span>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   )
