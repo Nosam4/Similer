@@ -1,5 +1,8 @@
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient'
 
+const DEFAULT_DISPLAY_NAME = 'Player'
+const MAX_DISPLAY_NAME_LENGTH = 8
+
 function getSupabaseClient() {
   if (!isSupabaseConfigured || !supabase) {
     throw new Error(
@@ -15,6 +18,16 @@ export function normalizeRoomCode(input) {
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '')
     .slice(0, 6)
+}
+
+export function sanitizeDisplayNameInput(input) {
+  return String(input ?? '')
+    .replace(/[^a-z]/gi, '')
+    .slice(0, MAX_DISPLAY_NAME_LENGTH)
+}
+
+export function normalizeDisplayName(input) {
+  return sanitizeDisplayNameInput(input) || DEFAULT_DISPLAY_NAME
 }
 
 export async function ensureAnonymousSession() {
@@ -51,15 +64,16 @@ function unwrapSingleRow(data) {
 
 export async function createRoom({ displayName, maxPlayers = 8 }) {
   const client = getSupabaseClient()
+  const safeDisplayName = normalizeDisplayName(displayName)
   const payload = {
-    p_display_name: displayName,
+    p_display_name: safeDisplayName,
     p_max_players: maxPlayers,
   }
   let response = await client.rpc('create_room', payload)
 
   if (response.error && /p_max_players|schema cache|function/i.test(response.error.message)) {
     response = await client.rpc('create_room', {
-      p_display_name: displayName,
+      p_display_name: safeDisplayName,
     })
   }
 
@@ -79,6 +93,7 @@ export async function createRoom({ displayName, maxPlayers = 8 }) {
 export async function joinRoomByCode({ code, displayName }) {
   const client = getSupabaseClient()
   const normalizedCode = normalizeRoomCode(code)
+  const safeDisplayName = normalizeDisplayName(displayName)
 
   if (normalizedCode.length !== 6) {
     throw new Error('Room code must be 6 characters.')
@@ -86,7 +101,7 @@ export async function joinRoomByCode({ code, displayName }) {
 
   const response = await client.rpc('join_room', {
     p_room_code: normalizedCode,
-    p_display_name: displayName,
+    p_display_name: safeDisplayName,
   })
 
   if (response.error) {
@@ -140,7 +155,10 @@ export async function fetchRoomPlayers(roomId) {
     throw new Error(response.error.message)
   }
 
-  return response.data ?? []
+  return (response.data ?? []).map((player) => ({
+    ...player,
+    display_name: normalizeDisplayName(player.display_name),
+  }))
 }
 
 export async function fetchRoomState(roomId) {

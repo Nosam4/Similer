@@ -129,7 +129,8 @@ function PokerTable({
   showWordControls = true,
   viewerPlayerId = null,
 }) {
-  const flightCardRef = useRef(null)
+  const judgeWordFlightRef = useRef(null)
+  const judgeNameFlightRef = useRef(null)
   const transferDelayRef = useRef(null)
   const [settledTransferKey, setSettledTransferKey] = useState('')
   const dealerPlayerId = getPlayerIdAtIndex(players, dealerIndex)
@@ -137,11 +138,10 @@ function PokerTable({
   const judgeId = judge?.id ?? null
   const judgeTransferKey = judgeId === null ? '' : `${handNumber}:${judgeId}`
   const centerJudgeWord = judge?.holeWord ?? judgeWord
-  const isJudgeSettled = Boolean(judge && settledTransferKey === judgeTransferKey)
-  const isJudgeTransferActive = Boolean(
-    judge && centerJudgeWord && judgeTransferKey && !isJudgeSettled,
+  const isJudgeTransferPending = Boolean(
+    judge && centerJudgeWord && judgeTransferKey && settledTransferKey !== judgeTransferKey,
   )
-  const tablePlayers = judge && isJudgeSettled ? players.filter((player) => player.id !== judge.id) : players
+  const tablePlayers = judge ? players.filter((player) => player.id !== judge.id) : players
   const visualPlayers = rotatePlayersForViewer(tablePlayers, viewerPlayerId)
   const layout = getSeatLayout(visualPlayers.length)
   const fullVisualPlayers = rotatePlayersForViewer(players, viewerPlayerId)
@@ -149,7 +149,7 @@ function PokerTable({
   const judgeFlightIndex = fullVisualPlayers.findIndex((player) => player.id === judge?.id)
   const judgeFlightPosition =
     judgeFlightIndex >= 0 ? fullLayout[judgeFlightIndex] ?? fullLayout[fullLayout.length - 1] : null
-  const shouldShowJudgeCenter = Boolean(centerJudgeWord && !isJudgeTransferActive)
+  const shouldShowJudgeCenter = Boolean(centerJudgeWord && (!judge || !isJudgeTransferPending))
   const centerCopy = judge
     ? `${judge.name}${dealerPlayerId === judge.id ? ' · Dealer' : ''}`
     : judgeWord
@@ -157,13 +157,12 @@ function PokerTable({
       : 'Judge word revealed after opening statements'
 
   useLayoutEffect(() => {
-    if (!isJudgeTransferActive || !flightCardRef.current) {
+    if (!isJudgeTransferPending || !judgeWordFlightRef.current || !judgeNameFlightRef.current) {
       return undefined
     }
 
-    const flightCard = flightCardRef.current
-    const avatar = flightCard.querySelector('.seat-avatar-wrap')
-    const chipPanel = flightCard.querySelector('.seat-chip-panel')
+    const wordToken = judgeWordFlightRef.current
+    const nameToken = judgeNameFlightRef.current
     const timeline = gsap.timeline({
       paused: true,
       defaults: { ease: 'power3.inOut' },
@@ -172,26 +171,40 @@ function PokerTable({
       },
     })
 
-    gsap.set(flightCard, { autoAlpha: 0, scale: 1 })
+    gsap.set(wordToken, {
+      autoAlpha: 0,
+      scale: 0.86,
+      xPercent: -50,
+      y: -12,
+      yPercent: -50,
+      transformOrigin: '50% 50%',
+    })
+    gsap.set(nameToken, {
+      autoAlpha: 0,
+      scale: 0.86,
+      xPercent: -50,
+      y: 18,
+      yPercent: -50,
+      transformOrigin: '50% 50%',
+    })
     timeline
-      .set(flightCard, { autoAlpha: 1 })
-      .to(flightCard, {
+      .set([wordToken, nameToken], { autoAlpha: 1 })
+      .to(wordToken, {
         left: '50%',
-        top: '50%',
-        scale: 1.08,
-        duration: 1.2,
-      })
-
-    if (avatar) {
-      timeline.to(avatar, { autoAlpha: 0, scale: 0.68, duration: 0.3 }, '-=0.36')
-    }
-
-    if (chipPanel) {
-      timeline.to(chipPanel, { autoAlpha: 0, y: 8, duration: 0.24 }, '<')
-    }
-
-    timeline
-      .to(flightCard, { autoAlpha: 0, duration: 0.22 }, '+=0.08')
+        top: '44%',
+        y: 0,
+        scale: 1,
+        duration: 1.05,
+      }, 0)
+      .to(nameToken, {
+        left: '50%',
+        top: '57%',
+        y: 0,
+        scale: 1,
+        duration: 1.05,
+      }, 0.08)
+      .to([wordToken, nameToken], { scale: 1.03, duration: 0.16, ease: 'power2.out' }, '>')
+      .to([wordToken, nameToken], { autoAlpha: 0, duration: 0.18 }, '+=0.05')
 
     transferDelayRef.current = window.setTimeout(() => {
       timeline.paused(false)
@@ -201,7 +214,7 @@ function PokerTable({
       window.clearTimeout(transferDelayRef.current)
       timeline.kill()
     }
-  }, [isJudgeTransferActive, judgeTransferKey])
+  }, [isJudgeTransferPending, judgeTransferKey])
 
   return (
     <section className="poker-table-shell" aria-label="Similer table">
@@ -225,14 +238,24 @@ function PokerTable({
           <strong>{potSummary.totalPot}</strong>
         </div>
 
-        <div className={`table-center${shouldShowJudgeCenter ? ' judge-center' : ''}`} aria-label="Table center">
+        <div
+          className={`table-center${centerJudgeWord ? ' judge-center' : ''}${
+            isJudgeTransferPending ? ' judge-center-pending' : ''
+          }`}
+          aria-label="Table center"
+        >
           <span className="table-center-kicker">Similer</span>
-          {shouldShowJudgeCenter ? (
-            <>
-              <span className="judge-center-label">Judge Word</span>
-              <strong>{centerJudgeWord}</strong>
-              <span>{centerCopy}</span>
-            </>
+          {centerJudgeWord ? (
+            <div className="center-judge-slots">
+              <div className="center-judge-slot center-word-slot">
+                <span>Judge Word</span>
+                <strong>{shouldShowJudgeCenter ? centerJudgeWord : '\u00a0'}</strong>
+              </div>
+              <div className="center-judge-slot center-name-slot">
+                <span>Judge</span>
+                <strong>{shouldShowJudgeCenter ? centerCopy : '\u00a0'}</strong>
+              </div>
+            </div>
           ) : (
             <>
               <strong>Words Hidden</strong>
@@ -253,14 +276,13 @@ function PokerTable({
               forceWordVisible || Boolean(revealByPlayerId[player.id]) || Boolean(isViewerPlayer && player.holeWord)
             const status = summarizePlayerStatus(player, isActor)
             const wordText = getWordText(player, isWordVisible)
-            const isTransferSource = isJudgeTransferActive && player.id === judge?.id
 
             return (
               <article
                 key={player.id}
                 className={`table-seat${isActor ? ' active' : ''}${
                   player.folded ? ' folded' : ''
-                }${player.stack <= 0 ? ' busted' : ''}${isTransferSource ? ' transfer-source' : ''}`}
+                }${player.stack <= 0 ? ' busted' : ''}`}
                 style={{ '--seat-x': `${position.x}%`, '--seat-y': `${position.y}%` }}
               >
                 <div className="seat-avatar-wrap">
@@ -286,14 +308,16 @@ function PokerTable({
                     ) : null}
                   </div>
 
-                  <div className="seat-panel seat-name-panel">
-                    <strong title={player.name}>{player.name}</strong>
-                    {isActor ? <span className="seat-state-pill turn-pill">Turn</span> : null}
-                  </div>
-
-                  <div className="seat-panel seat-chip-panel">
-                    <strong>{player.stack}</strong>
-                    <span>{status}</span>
+                  <div className="seat-panel seat-identity-panel">
+                    <div>
+                      <strong title={player.name}>{player.name}</strong>
+                      <span className="seat-chip-count">{player.stack}</span>
+                    </div>
+                    {isActor ? (
+                      <span className="seat-state-pill turn-pill">Turn</span>
+                    ) : (
+                      <span className="seat-status-text">{status}</span>
+                    )}
                   </div>
                 </div>
               </article>
@@ -301,34 +325,33 @@ function PokerTable({
           })}
         </div>
 
-        {isJudgeTransferActive && judge && judgeFlightPosition ? (
-          <div
-            ref={flightCardRef}
-            className="table-seat judge-flight-card"
-            style={{
-              '--seat-x': `${judgeFlightPosition.x}%`,
-              '--seat-y': `${judgeFlightPosition.y}%`,
-            }}
-            aria-hidden="true"
-          >
-            <div className="seat-avatar-wrap">
-              <div className="seat-avatar">{judge.name.slice(0, 1).toUpperCase()}</div>
-              {dealerPlayerId === judge.id ? <span className="dealer-token">D</span> : null}
+        {isJudgeTransferPending && judge && judgeFlightPosition ? (
+          <>
+            <div
+              ref={judgeWordFlightRef}
+              className="judge-token-flight judge-word-flight"
+              style={{
+                '--seat-x': `${judgeFlightPosition.x}%`,
+                '--seat-y': `${judgeFlightPosition.y}%`,
+              }}
+              aria-hidden="true"
+            >
+              <span>Judge Word</span>
+              <strong>{centerJudgeWord}</strong>
             </div>
-
-            <div className="seat-panels">
-              <div className="seat-panel seat-word-panel">
-                <strong title={centerJudgeWord}>Word: {centerJudgeWord}</strong>
-              </div>
-              <div className="seat-panel seat-name-panel">
-                <strong title={judge.name}>{judge.name}</strong>
-              </div>
-              <div className="seat-panel seat-chip-panel">
-                <strong>{judge.stack}</strong>
-                <span>Becomes Judge</span>
-              </div>
+            <div
+              ref={judgeNameFlightRef}
+              className="judge-token-flight judge-name-flight"
+              style={{
+                '--seat-x': `${judgeFlightPosition.x}%`,
+                '--seat-y': `${judgeFlightPosition.y}%`,
+              }}
+              aria-hidden="true"
+            >
+              <span>Judge</span>
+              <strong>{centerCopy}</strong>
             </div>
-          </div>
+          </>
         ) : null}
       </div>
     </section>

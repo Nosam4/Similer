@@ -16,6 +16,7 @@ const CATEGORY_LABELS = {
 
 const ACTIVE_JUDGE_TAX_RATE = 0.2
 const FOLDED_JUDGE_TAX_RATE = 0.1
+const FALLBACK_PLAYER_NAMES = ['North', 'East', 'South', 'West', 'Alpha', 'Bravo', 'Charlie', 'Delta']
 
 const WORDS = matrixData.words
 const SCORES = matrixData.scores
@@ -1618,6 +1619,14 @@ function getJudgePlayerFromState(state) {
   return state.players.find((player) => player.id === state.judgePlayerId) ?? null
 }
 
+function sanitizePlayerName(name, index = 0) {
+  const cleanName = String(name ?? '')
+    .replace(/[^a-z]/gi, '')
+    .slice(0, 8)
+
+  return cleanName || FALLBACK_PLAYER_NAMES[index] || 'Player'
+}
+
 export function createInitialGame(options = {}) {
   const {
     playerNames = ['North', 'East', 'South', 'West'],
@@ -1628,8 +1637,7 @@ export function createInitialGame(options = {}) {
   } = options
 
   const cleanNames = playerNames
-    .map((name) => String(name).trim())
-    .filter((name) => name.length > 0)
+    .map((name, index) => sanitizePlayerName(name, index))
     .slice(0, 8)
 
   const finalNames = cleanNames.length >= 3 ? cleanNames : ['North', 'East', 'South', 'West']

@@ -17,6 +17,7 @@ const STARTING_STACK = 400
 const ANTE = 10
 const MIN_BET = 10
 const PUBLIC_WORD_PHASES = new Set(['debate', 'showdownVoting', 'handComplete'])
+const FALLBACK_PLAYER_NAMES = ['North', 'East', 'South', 'West', 'Alpha', 'Bravo', 'Charlie', 'Delta']
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -136,11 +137,18 @@ function getPlayerVoteVoterIds(game: any) {
     .map((player: any) => Number(player.id))
 }
 
+function normalizeDisplayName(input: unknown, index = 0) {
+  const cleanName = String(input ?? '')
+    .replace(/[^a-z]/gi, '')
+    .slice(0, 8)
+
+  return cleanName || FALLBACK_PLAYER_NAMES[index] || 'Player'
+}
+
 function getRoomPlayerNames(roomPlayers: any[]) {
   return [...roomPlayers]
     .sort((left, right) => left.seat_index - right.seat_index)
-    .map((player) => String(player.display_name).trim())
-    .filter(Boolean)
+    .map((player, index) => normalizeDisplayName(player.display_name, index))
 }
 
 async function requireSupabaseUser(req: Request, supabaseUrl: string, anonKey: string) {

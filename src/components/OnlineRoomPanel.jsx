@@ -8,7 +8,9 @@ import {
   fetchRoomState,
   joinRoomByCode,
   leaveRoom,
+  normalizeDisplayName,
   normalizeRoomCode,
+  sanitizeDisplayNameInput,
   setReady,
   subscribeToRoom,
 } from '../multiplayer/roomApi'
@@ -174,7 +176,7 @@ function OnlineRoomPanel({
   const isRoomPlaying = room?.status === 'playing'
 
   async function handleCreateRoom() {
-    const trimmedName = displayName.trim() || DEFAULT_DISPLAY_NAME
+    const trimmedName = normalizeDisplayName(displayName)
     setBusy(true)
     setErrorText('')
 
@@ -200,7 +202,7 @@ function OnlineRoomPanel({
   }
 
   async function handleJoinRoom() {
-    const trimmedName = displayName.trim() || DEFAULT_DISPLAY_NAME
+    const trimmedName = normalizeDisplayName(displayName)
     setBusy(true)
     setErrorText('')
 
@@ -292,13 +294,13 @@ function OnlineRoomPanel({
             <input
               type="text"
               value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
+              onChange={(event) => setDisplayName(sanitizeDisplayNameInput(event.target.value))}
               onFocus={() => {
                 if (displayName === DEFAULT_DISPLAY_NAME) {
                   setDisplayName('')
                 }
               }}
-              maxLength={32}
+              maxLength={8}
               placeholder={DEFAULT_DISPLAY_NAME}
               disabled={booting || busy}
             />
