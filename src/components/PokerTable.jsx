@@ -141,11 +141,14 @@ function PokerTable({
   const isJudgeTransferPending = Boolean(
     judge && centerJudgeWord && judgeTransferKey && settledTransferKey !== judgeTransferKey,
   )
-  const tablePlayers = judge ? players.filter((player) => player.id !== judge.id) : players
-  const visualPlayers = rotatePlayersForViewer(tablePlayers, viewerPlayerId)
-  const layout = getSeatLayout(visualPlayers.length)
   const fullVisualPlayers = rotatePlayersForViewer(players, viewerPlayerId)
   const fullLayout = getSeatLayout(fullVisualPlayers.length)
+  const visualSeats = fullVisualPlayers
+    .map((player, index) => ({
+      player,
+      position: fullLayout[index] ?? fullLayout[fullLayout.length - 1],
+    }))
+    .filter(({ player }) => player.id !== judge?.id)
   const judgeFlightIndex = fullVisualPlayers.findIndex((player) => player.id === judge?.id)
   const judgeFlightPosition =
     judgeFlightIndex >= 0 ? fullLayout[judgeFlightIndex] ?? fullLayout[fullLayout.length - 1] : null
@@ -264,9 +267,8 @@ function PokerTable({
           )}
         </div>
 
-        <div className="seat-ring" style={{ '--seat-count': visualPlayers.length }}>
-          {visualPlayers.map((player, index) => {
-            const position = layout[index] ?? layout[layout.length - 1]
+        <div className="seat-ring" style={{ '--seat-count': fullVisualPlayers.length }}>
+          {visualSeats.map(({ player, position }) => {
             const isDealer = dealerPlayerId === player.id
             const isActor = currentPlayerId === player.id
             const forceWordVisible =
