@@ -296,7 +296,7 @@ function PokerTable({
 
                 <div className="seat-panels">
                   <div className="seat-panel seat-word-panel">
-                    <strong title={wordText}>Word: {wordText}</strong>
+                    <strong title={wordText}>{wordText}</strong>
                     {showWordControls && player.inHand && !forceWordVisible ? (
                       <button
                         type="button"

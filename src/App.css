@@ -886,7 +886,7 @@ button.tiny {
 
 .log-panel ol {
   margin: 0;
-  padding-left: 18px;
+  padding-left: 38px;
   max-height: 260px;
   overflow: auto;
   display: grid;
