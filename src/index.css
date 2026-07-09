@@ -35,6 +35,17 @@ body {
   padding: 16px;
 }
 
+body.local-game-active {
+  overflow: hidden;
+}
+
+body.local-game-active #root {
+  width: 100%;
+  max-width: none;
+  min-height: 100svh;
+  padding: 0;
+}
+
 h1,
 h2,
 h3,

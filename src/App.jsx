@@ -21,6 +21,7 @@ import BustedPanel from './components/BustedPanel'
 import ConfettiComponent from './components/ConfettiComponent'
 import DebatePanel from './components/DebatePanel'
 import HandCompletePanel from './components/HandCompletePanel'
+import LocalGameViewport from './components/LocalGameViewport'
 import LocalTestControls from './components/LocalTestControls'
 import OnlineRoomPanel from './components/OnlineRoomPanel'
 import PokerTable from './components/PokerTable'
@@ -141,6 +142,14 @@ function App() {
       ? 'Loading the online game state. Players should wait here while the room syncs.'
       : 'Online room is waiting. Mark ready, wait for seats to fill, and start the online game from the room controls.'
   const game = isOnlinePlaying ? hydratedOnlineGame : localGame
+
+  useEffect(() => {
+    document.body.classList.toggle('local-game-active', !isOnlineRoomConnected)
+
+    return () => {
+      document.body.classList.remove('local-game-active')
+    }
+  }, [isOnlineRoomConnected])
 
   const actor = getCurrentActor(game)
   const legal = getLegalActions(game)
@@ -752,6 +761,128 @@ function App() {
         [playerId]: !previous[playerId],
       }
     })
+  }
+
+  if (!isOnlineRoomConnected) {
+    const localStageOverlay = (
+      <StageOverlay
+        activeKey={stageOverlayConfig?.activeKey ?? ''}
+        kicker={stageOverlayConfig?.kicker}
+        title={stageOverlayConfig?.title}
+        judgeWord={judgeWord}
+        wordLabel={stageOverlayConfig?.wordLabel}
+        message={stageOverlayConfig?.message}
+      />
+    )
+    const localTable = (
+      <PokerTable
+        players={game.players}
+        dealerIndex={game.dealerIndex}
+        currentPlayerIndex={game.currentPlayerIndex}
+        phase={game.phase}
+        phaseLabel={getPhaseLabel(game.phase)}
+        handNumber={game.handNumber}
+        potSummary={potSummary}
+        judge={judge}
+        judgeWord={judgeWord}
+        wordBankSize={getWordBankSize(game)}
+        phasePulseTick={pulseTicks.phaseTile}
+        handComplete={game.handComplete}
+        revealByPlayerId={effectiveRevealByPlayerId}
+        onToggleWordReveal={toggleWordReveal}
+        showWordControls
+      />
+    )
+    const localActionPanel = (
+      <section className="controls local-game-controls">
+        {game.tableComplete ? (
+          <div className="notice">
+            <p>Table over: only one player has chips remaining.</p>
+          </div>
+        ) : null}
+
+        {game.handComplete ? (
+          <HandCompletePanel
+            game={game}
+            onBeginNextHand={beginNextHand}
+            onStartNewGame={startNewGame}
+            pulseTick={pulseTicks.handPanel}
+            winnerPulseTick={pulseTicks.winnerLine}
+          />
+        ) : isDebate ? (
+          <DebatePanel
+            judge={judge}
+            judgeWord={judgeWord}
+            contenders={contenders}
+            isFinalDuel={isFinalDuel}
+            isNeutralVoting={isNeutralVoting}
+            canCompleteDebate={canCompleteDebate}
+            onCompleteDebate={completeDebate}
+            pulseTick={pulseTicks.debatePanel}
+          />
+        ) : isShowdownVoting ? (
+          <ShowdownVotingPanel
+            judge={judge}
+            judgeWord={judgeWord}
+            contenders={contenders}
+            playerVoteVoters={playerVoteVoters}
+            defaultPlayerVotes={defaultPlayerVotes}
+            effectivePlayerVotes={effectivePlayerVotes}
+            setPlayerVotes={setPlayerVotes}
+            effectiveJudgeVote={effectiveJudgeVote}
+            setJudgeVote={setJudgeVote}
+            canResolveVotes={canResolveVotes}
+            onResolveVotes={resolveVotes}
+            pulseTick={pulseTicks.showdownPanel}
+            usesJudgeVote={Boolean(judge)}
+          />
+        ) : (
+          <TurnPanel
+            actor={actor}
+            legal={legal}
+            potSummary={potSummary}
+            amountInput={amountInput}
+            setAmountInput={setAmountInput}
+            onRunAction={runAction}
+            pulseTick={pulseTicks.turnPanel}
+          />
+        )}
+
+        {visibleErrorText ? <p className="error-text">{visibleErrorText}</p> : null}
+      </section>
+    )
+
+    return (
+      <LocalGameViewport
+        confetti={<ConfettiComponent key={confettiKey} active={confettiActive} mode={confettiMode} />}
+        stageOverlay={localStageOverlay}
+        handNumber={game.handNumber}
+        phaseLabel={getPhaseLabel(game.phase)}
+        playerCount={localGame.players.length}
+        actorName={actor?.name ?? ''}
+        potTotal={potSummary.totalPot}
+        setupPanel={
+          <LocalTestControls
+            playerCount={localGame.players.length}
+            onSelectPlayerCount={restartLocalTestGame}
+            wordPacks={WORD_PACKS}
+            selectedWordPackId={localWordPackId}
+            onSelectWordPack={handleSelectLocalWordPack}
+          />
+        }
+        roomPanel={
+          <OnlineRoomPanel
+            onSessionChange={handleOnlineSessionChange}
+            onStartOnlineGame={handleStartOnlineGame}
+            onPrivateDataChange={handlePrivateDataChange}
+            onlineGameBusy={onlineGameBusy}
+          />
+        }
+        table={localTable}
+        actionPanel={localActionPanel}
+        logPanel={<ActionLogPanel log={game.log} />}
+      />
+    )
   }
 
   return (
