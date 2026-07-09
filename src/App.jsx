@@ -136,6 +136,7 @@ function App() {
 
   const isOnlineRoomConnected = Boolean(onlineSession?.room)
   const isOnlinePlaying = Boolean(onlineSession?.room?.status === 'playing' && hydratedOnlineGame)
+  const isLocalViewportActive = !isOnlinePlaying
   const shouldShowGameTable = !isOnlineRoomConnected || isOnlinePlaying
   const onlineWaitingCopy =
     onlineSession?.room?.status === 'playing'
@@ -144,12 +145,12 @@ function App() {
   const game = isOnlinePlaying ? hydratedOnlineGame : localGame
 
   useEffect(() => {
-    document.body.classList.toggle('local-game-active', !isOnlineRoomConnected)
+    document.body.classList.toggle('local-game-active', isLocalViewportActive)
 
     return () => {
       document.body.classList.remove('local-game-active')
     }
-  }, [isOnlineRoomConnected])
+  }, [isLocalViewportActive])
 
   const actor = getCurrentActor(game)
   const legal = getLegalActions(game)
@@ -763,7 +764,7 @@ function App() {
     })
   }
 
-  if (!isOnlineRoomConnected) {
+  if (isLocalViewportActive) {
     const localStageOverlay = (
       <StageOverlay
         activeKey={stageOverlayConfig?.activeKey ?? ''}
@@ -856,11 +857,17 @@ function App() {
       <LocalGameViewport
         confetti={<ConfettiComponent key={confettiKey} active={confettiActive} mode={confettiMode} />}
         stageOverlay={localStageOverlay}
-        handNumber={game.handNumber}
-        phaseLabel={getPhaseLabel(game.phase)}
-        playerCount={localGame.players.length}
-        actorName={actor?.name ?? ''}
-        potTotal={potSummary.totalPot}
+        eyebrow={isOnlineRoomConnected ? 'Online Setup' : 'Local Table'}
+        headerPanel={
+          <OnlineRoomPanel
+            variant="header"
+            initialSession={onlineSession}
+            onSessionChange={handleOnlineSessionChange}
+            onStartOnlineGame={handleStartOnlineGame}
+            onPrivateDataChange={handlePrivateDataChange}
+            onlineGameBusy={onlineGameBusy}
+          />
+        }
         setupPanel={
           <LocalTestControls
             playerCount={localGame.players.length}
@@ -868,14 +875,6 @@ function App() {
             wordPacks={WORD_PACKS}
             selectedWordPackId={localWordPackId}
             onSelectWordPack={handleSelectLocalWordPack}
-          />
-        }
-        roomPanel={
-          <OnlineRoomPanel
-            onSessionChange={handleOnlineSessionChange}
-            onStartOnlineGame={handleStartOnlineGame}
-            onPrivateDataChange={handlePrivateDataChange}
-            onlineGameBusy={onlineGameBusy}
           />
         }
         table={localTable}
@@ -898,6 +897,7 @@ function App() {
       />
 
       <OnlineRoomPanel
+        initialSession={onlineSession}
         onSessionChange={handleOnlineSessionChange}
         onStartOnlineGame={handleStartOnlineGame}
         onPrivateDataChange={handlePrivateDataChange}

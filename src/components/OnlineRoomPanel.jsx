@@ -23,20 +23,22 @@ function OnlineRoomPanel({
   onStartOnlineGame = null,
   onPrivateDataChange = null,
   onlineGameBusy = false,
+  variant = 'panel',
+  initialSession = null,
 }) {
-  const [userId, setUserId] = useState('')
+  const [userId, setUserId] = useState(() => initialSession?.userId ?? '')
   const [displayName, setDisplayName] = useState('')
   const [roomCodeInput, setRoomCodeInput] = useState('')
-  const [room, setRoom] = useState(null)
-  const [roomState, setRoomState] = useState(null)
-  const [players, setPlayers] = useState([])
+  const [room, setRoom] = useState(() => initialSession?.room ?? null)
+  const [roomState, setRoomState] = useState(() => initialSession?.roomState ?? null)
+  const [players, setPlayers] = useState(() => initialSession?.players ?? [])
   const [busy, setBusy] = useState(false)
   const [errorText, setErrorText] = useState('')
-  const [booting, setBooting] = useState(isSupabaseConfigured)
+  const [booting, setBooting] = useState(isSupabaseConfigured && !initialSession?.userId)
   const [refreshTick, setRefreshTick] = useState(0)
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
+    if (!isSupabaseConfigured || userId) {
       return undefined
     }
 
@@ -68,7 +70,7 @@ function OnlineRoomPanel({
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [userId])
 
   useEffect(() => {
     if (!room?.id) {
@@ -174,6 +176,7 @@ function OnlineRoomPanel({
     return seats
   }, [players, room?.max_players])
   const isRoomPlaying = room?.status === 'playing'
+  const roomSeatCount = `${players.length}/${room?.max_players ?? MAX_ROOM_PLAYERS}`
 
   async function handleCreateRoom() {
     const trimmedName = normalizeDisplayName(displayName)
@@ -267,6 +270,105 @@ function OnlineRoomPanel({
     } finally {
       setBusy(false)
     }
+  }
+
+  if (variant === 'header') {
+    return (
+      <section className="online-room-panel online-room-panel--header" aria-label="Online room setup">
+        <label className="online-room-header-field">
+          <span>Display Name</span>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(event) => setDisplayName(sanitizeDisplayNameInput(event.target.value))}
+            onFocus={() => {
+              if (displayName === DEFAULT_DISPLAY_NAME) {
+                setDisplayName('')
+              }
+            }}
+            maxLength={8}
+            placeholder={DEFAULT_DISPLAY_NAME}
+            disabled={!isSupabaseConfigured || booting || busy || Boolean(room)}
+          />
+        </label>
+
+        <button
+          type="button"
+          disabled={!isSupabaseConfigured || booting || busy || !userId || Boolean(room)}
+          onClick={handleCreateRoom}
+        >
+          Create Room
+        </button>
+
+        <label className="online-room-header-field">
+          <span>Join Code</span>
+          <input
+            type="text"
+            value={roomCodeInput}
+            onChange={(event) => setRoomCodeInput(normalizeRoomCode(event.target.value))}
+            maxLength={6}
+            placeholder="ABC123"
+            disabled={!isSupabaseConfigured || booting || busy || Boolean(room)}
+          />
+        </label>
+
+        <button
+          type="button"
+          disabled={
+            !isSupabaseConfigured ||
+            booting ||
+            busy ||
+            !userId ||
+            Boolean(room) ||
+            roomCodeInput.length !== 6
+          }
+          onClick={handleJoinRoom}
+        >
+          Join Room
+        </button>
+
+        <span className="online-room-seat-count">{roomSeatCount}</span>
+
+        {room ? (
+          <span className="online-room-code">
+            Code <b>{room.code}</b>
+          </span>
+        ) : null}
+
+        {room && !isRoomPlaying ? (
+          <button type="button" disabled={busy || !myPlayer} onClick={handleToggleReady}>
+            {myPlayer?.is_ready ? 'Not Ready' : 'Ready'}
+          </button>
+        ) : null}
+
+        {room && !isRoomPlaying && room.host_user_id === userId ? (
+          <button
+            type="button"
+            disabled={
+              busy ||
+              onlineGameBusy ||
+              !onStartOnlineGame ||
+              room.status === 'playing' ||
+              players.length < 3
+            }
+            onClick={onStartOnlineGame}
+          >
+            Start
+          </button>
+        ) : null}
+
+        {room ? (
+          <button type="button" disabled={busy} onClick={handleLeaveRoom}>
+            Leave
+          </button>
+        ) : null}
+
+        {errorText ? <span className="online-room-header-error">{errorText}</span> : null}
+        {!isSupabaseConfigured ? (
+          <span className="online-room-header-error">Supabase env missing</span>
+        ) : null}
+      </section>
+    )
   }
 
   return (

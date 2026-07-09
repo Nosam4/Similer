@@ -2,20 +2,15 @@ import { useState } from 'react'
 
 const DRAWER_TITLES = {
   setup: 'Local Setup',
-  room: 'Online Room',
   log: 'Action Log',
 }
 
 function LocalGameViewport({
   confetti,
   stageOverlay,
-  handNumber,
-  phaseLabel,
-  playerCount,
-  actorName,
-  potTotal,
+  eyebrow = 'Local Table',
+  headerPanel,
   setupPanel,
-  roomPanel,
   table,
   actionPanel,
   logPanel,
@@ -25,11 +20,9 @@ function LocalGameViewport({
   const drawerContent =
     activeDrawer === 'setup'
       ? setupPanel
-      : activeDrawer === 'room'
-        ? roomPanel
-        : activeDrawer === 'log'
-          ? logPanel
-          : null
+      : activeDrawer === 'log'
+        ? logPanel
+        : null
 
   function toggleDrawer(drawerName) {
     setActiveDrawer((currentDrawer) => (currentDrawer === drawerName ? null : drawerName))
@@ -42,17 +35,11 @@ function LocalGameViewport({
 
       <header className="local-game-topbar">
         <div className="local-game-brand">
-          <span>Local Table</span>
+          <span>{eyebrow}</span>
           <strong>WhatGame</strong>
         </div>
 
-        <div className="local-game-status" aria-label="Local hand status">
-          <span>Hand {handNumber}</span>
-          <span>{phaseLabel}</span>
-          <span>Pot {potTotal}</span>
-          <span>{actorName ? `${actorName} acts` : 'No actor'}</span>
-          <span>{playerCount} seats</span>
-        </div>
+        <div className="local-game-header-room">{headerPanel}</div>
 
         <nav className="local-game-tools" aria-label="Local table tools">
           <button
@@ -62,14 +49,6 @@ function LocalGameViewport({
             onClick={() => toggleDrawer('setup')}
           >
             Setup
-          </button>
-          <button
-            type="button"
-            className={activeDrawer === 'room' ? 'active' : ''}
-            aria-pressed={activeDrawer === 'room'}
-            onClick={() => toggleDrawer('room')}
-          >
-            Room
           </button>
           <button
             type="button"
