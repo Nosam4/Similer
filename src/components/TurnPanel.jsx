@@ -41,7 +41,7 @@ function TurnPanel({
         {actor ? `${actor.name} to act.` : 'No active player.'} To call: {legal.callAmount}
       </p>
 
-      <div className="amount-row">
+      <div className="amount-row betting-amount-row">
         <label htmlFor="amount-input">Bet/Raise target</label>
         <input
           id="amount-input"
@@ -53,6 +53,7 @@ function TurnPanel({
         />
         <button
           type="button"
+          className="quick-bet-button"
           disabled={!legal.bet}
           onClick={() => setAmountInput(String(legal.minBetTo ?? legal.maxTo ?? 0))}
         >
@@ -60,6 +61,7 @@ function TurnPanel({
         </button>
         <button
           type="button"
+          className="quick-bet-button"
           disabled={!legal.raise}
           onClick={() => setAmountInput(String(legal.minRaiseTo ?? legal.maxTo ?? 0))}
         >
@@ -67,6 +69,7 @@ function TurnPanel({
         </button>
         <button
           type="button"
+          className="quick-bet-button"
           disabled={!canSetBetTarget}
           onClick={() => {
             setAmountInput(String(getPotBetTarget({ legal, potSummary, fraction: 0.5 })))
@@ -76,6 +79,7 @@ function TurnPanel({
         </button>
         <button
           type="button"
+          className="quick-bet-button"
           disabled={!canSetBetTarget}
           onClick={() => {
             setAmountInput(String(getPotBetTarget({ legal, potSummary, fraction: 1 })))
@@ -85,6 +89,7 @@ function TurnPanel({
         </button>
         <button
           type="button"
+          className="quick-bet-button"
           disabled={!canSetBetTarget}
           onClick={() => setAmountInput(String(legal.maxTo ?? 0))}
         >
@@ -92,24 +97,50 @@ function TurnPanel({
         </button>
       </div>
 
-      <div className="action-row">
-        <button type="button" disabled={!legal.fold} onClick={() => onRunAction('fold')}>
+      <div className="action-row betting-action-row">
+        <button
+          type="button"
+          className="action-button fold-action"
+          disabled={!legal.fold}
+          onClick={() => onRunAction('fold')}
+        >
           Fold
         </button>
-        <button type="button" disabled={!legal.check} onClick={() => onRunAction('check')}>
+        <button
+          type="button"
+          className="action-button check-action"
+          disabled={!legal.check}
+          onClick={() => onRunAction('check')}
+        >
           Check
         </button>
-        <button type="button" disabled={!legal.call} onClick={() => onRunAction('call')}>
+        <button
+          type="button"
+          className="action-button call-action"
+          disabled={!legal.call}
+          onClick={() => onRunAction('call')}
+        >
           Call ({legal.callAmount})
         </button>
-        <button type="button" disabled={!legal.bet} onClick={() => onRunAction('bet')}>
+        <button
+          type="button"
+          className="action-button bet-action"
+          disabled={!legal.bet}
+          onClick={() => onRunAction('bet')}
+        >
           Bet
         </button>
-        <button type="button" disabled={!legal.raise} onClick={() => onRunAction('raise')}>
+        <button
+          type="button"
+          className="action-button raise-action"
+          disabled={!legal.raise}
+          onClick={() => onRunAction('raise')}
+        >
           Raise
         </button>
         <button
           type="button"
+          className="action-button all-in-action"
           disabled={!legal.allIn}
           onClick={() => onRunAction('all-in')}
         >

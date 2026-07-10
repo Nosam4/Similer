@@ -11,8 +11,15 @@ function LocalTestControls({
     <section className="local-test-controls" aria-label="Local test player controls">
       <div className="local-test-copy">
         <strong>Local Test Table</strong>
-        <span>Restart with:</span>
       </div>
+
+      <button
+        type="button"
+        className="local-restart-button"
+        onClick={() => onSelectPlayerCount(playerCount)}
+      >
+        Restart Game
+      </button>
 
       {wordPacks.length > 0 ? (
         <label className="local-word-pack-select">
@@ -30,18 +37,21 @@ function LocalTestControls({
         </label>
       ) : null}
 
-      <div className="local-test-buttons" aria-label="Choose local player count">
-        {LOCAL_TEST_PLAYER_COUNTS.map((count) => (
-          <button
-            key={count}
-            type="button"
-            className={count === playerCount ? 'active' : ''}
-            aria-pressed={count === playerCount}
-            onClick={() => onSelectPlayerCount(count)}
-          >
-            {count}
-          </button>
-        ))}
+      <div className="local-player-count-select">
+        <span>Players</span>
+        <div className="local-test-buttons" aria-label="Choose local player count">
+          {LOCAL_TEST_PLAYER_COUNTS.map((count) => (
+            <button
+              key={count}
+              type="button"
+              className={count === playerCount ? 'active' : ''}
+              aria-pressed={count === playerCount}
+              onClick={() => onSelectPlayerCount(count)}
+            >
+              {count}
+            </button>
+          ))}
+        </div>
       </div>
     </section>
   )

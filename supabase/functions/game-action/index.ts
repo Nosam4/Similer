@@ -3,6 +3,8 @@ import {
   applyPlayerAction,
   completeDebateStage,
   createInitialGame,
+  forceCompleteArguments,
+  markArgumentComplete,
   resolveShowdownVotes,
   startNextHand,
 } from '../_shared/wordgame/engine.js'
@@ -461,18 +463,26 @@ Deno.serve(async (req) => {
         }
 
         nextGame = applyPlayerAction(fullGame, payload.type, Number(payload.amount))
-      } else if (command === 'completeDebate') {
-        const currentSeatIndex = Number(currentMember.seat_index)
-        const currentPlayer = fullGame.players.find((player: any) => Number(player.id) === currentSeatIndex)
-        const canCompleteDebate =
-          currentPlayer?.isJudge ||
-          Boolean(currentPlayer?.inHand && !currentPlayer?.folded && !currentPlayer?.isJudge)
+      } else if (command === 'markArgumentComplete') {
+        const playerId = Number(payload.playerId)
 
-        if (!canCompleteDebate) {
-          throw new Error('Only the judge or active contenders can complete debate.')
+        if (Number(currentMember.seat_index) !== playerId) {
+          throw new Error('Players can only mark their own argument.')
         }
 
-        nextGame = completeDebateStage(fullGame)
+        nextGame = markArgumentComplete(fullGame, playerId, payload.phaseKey ?? null)
+      } else if (command === 'forceCompleteArguments') {
+        if (!isHost) {
+          throw new Error('Only the room host can override argument tracking.')
+        }
+
+        nextGame = forceCompleteArguments(fullGame, payload.phaseKey ?? null)
+      } else if (command === 'completeDebate') {
+        if (!isHost) {
+          throw new Error('Only the room host can advance closing arguments.')
+        }
+
+        nextGame = completeDebateStage(fullGame, { force: Boolean(payload.force) })
       } else if (command === 'resolveVotes') {
         const voteRows = await fetchVotesForResolution(serviceClient, fullGame, roomId)
         nextGame = resolveShowdownVotes(fullGame, buildVotesPayload(voteRows))

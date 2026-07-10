@@ -2,8 +2,6 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { gsap } from 'gsap'
 import { summarizePlayerStatus } from './uiHelpers'
 
-const STAGE_OVERLAY_DURATION_MS = 5200
-
 const SEAT_LAYOUTS = {
   1: [{ x: 50, y: 86 }],
   2: [
@@ -128,6 +126,7 @@ function PokerTable({
   onToggleWordReveal,
   showWordControls = true,
   viewerPlayerId = null,
+  delayJudgeTransfer = false,
 }) {
   const judgeWordFlightRef = useRef(null)
   const judgeNameFlightRef = useRef(null)
@@ -141,6 +140,8 @@ function PokerTable({
   const isJudgeTransferPending = Boolean(
     judge && centerJudgeWord && judgeTransferKey && settledTransferKey !== judgeTransferKey,
   )
+  const isJudgeTransferDelayed = Boolean(isJudgeTransferPending && delayJudgeTransfer)
+  const shouldRunJudgeTransfer = Boolean(isJudgeTransferPending && !isJudgeTransferDelayed)
   const fullVisualPlayers = rotatePlayersForViewer(players, viewerPlayerId)
   const fullLayout = getSeatLayout(fullVisualPlayers.length)
   const visualSeats = fullVisualPlayers
@@ -148,7 +149,7 @@ function PokerTable({
       player,
       position: fullLayout[index] ?? fullLayout[fullLayout.length - 1],
     }))
-    .filter(({ player }) => player.id !== judge?.id)
+    .filter(({ player }) => isJudgeTransferDelayed || player.id !== judge?.id)
   const judgeFlightIndex = fullVisualPlayers.findIndex((player) => player.id === judge?.id)
   const judgeFlightPosition =
     judgeFlightIndex >= 0 ? fullLayout[judgeFlightIndex] ?? fullLayout[fullLayout.length - 1] : null
@@ -160,7 +161,7 @@ function PokerTable({
       : 'Judge word revealed after opening statements'
 
   useLayoutEffect(() => {
-    if (!isJudgeTransferPending || !judgeWordFlightRef.current || !judgeNameFlightRef.current) {
+    if (!shouldRunJudgeTransfer || !judgeWordFlightRef.current || !judgeNameFlightRef.current) {
       return undefined
     }
 
@@ -211,13 +212,13 @@ function PokerTable({
 
     transferDelayRef.current = window.setTimeout(() => {
       timeline.paused(false)
-    }, STAGE_OVERLAY_DURATION_MS)
+    }, 120)
 
     return () => {
       window.clearTimeout(transferDelayRef.current)
       timeline.kill()
     }
-  }, [isJudgeTransferPending, judgeTransferKey])
+  }, [judgeTransferKey, shouldRunJudgeTransfer])
 
   return (
     <section className="poker-table-shell" aria-label="Similer table">
@@ -327,7 +328,7 @@ function PokerTable({
           })}
         </div>
 
-        {isJudgeTransferPending && judge && judgeFlightPosition ? (
+        {shouldRunJudgeTransfer && judge && judgeFlightPosition ? (
           <>
             <div
               ref={judgeWordFlightRef}

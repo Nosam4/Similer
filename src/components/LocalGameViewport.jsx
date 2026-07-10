@@ -16,11 +16,13 @@ function LocalGameViewport({
   logPanel,
 }) {
   const [activeDrawer, setActiveDrawer] = useState(null)
-  const drawerTitle = activeDrawer ? DRAWER_TITLES[activeDrawer] : ''
+  const hasSetupPanel = Boolean(setupPanel)
+  const visibleDrawer = activeDrawer === 'setup' && !hasSetupPanel ? null : activeDrawer
+  const drawerTitle = visibleDrawer ? DRAWER_TITLES[visibleDrawer] : ''
   const drawerContent =
-    activeDrawer === 'setup'
+    visibleDrawer === 'setup'
       ? setupPanel
-      : activeDrawer === 'log'
+      : visibleDrawer === 'log'
         ? logPanel
         : null
 
@@ -41,15 +43,17 @@ function LocalGameViewport({
 
         <div className="local-game-header-room">{headerPanel}</div>
 
-        <nav className="local-game-tools" aria-label="Local table tools">
-          <button
-            type="button"
-            className={activeDrawer === 'setup' ? 'active' : ''}
-            aria-pressed={activeDrawer === 'setup'}
-            onClick={() => toggleDrawer('setup')}
-          >
-            Setup
-          </button>
+        <nav className="local-game-tools" aria-label="Table tools">
+          {hasSetupPanel ? (
+            <button
+              type="button"
+              className={activeDrawer === 'setup' ? 'active' : ''}
+              aria-pressed={activeDrawer === 'setup'}
+              onClick={() => toggleDrawer('setup')}
+            >
+              Setup
+            </button>
+          ) : null}
           <button
             type="button"
             className={activeDrawer === 'log' ? 'active' : ''}
@@ -61,15 +65,15 @@ function LocalGameViewport({
         </nav>
       </header>
 
-      <section className="local-game-stage" aria-label="Local game table">
+      <section className="local-game-stage" aria-label="Game table">
         {table}
       </section>
 
-      <section className="local-game-actionbar" aria-label="Local game actions">
+      <section className="local-game-actionbar" aria-label="Game actions">
         {actionPanel}
       </section>
 
-      {activeDrawer ? (
+      {visibleDrawer ? (
         <button
           type="button"
           className="local-game-scrim"
@@ -78,7 +82,7 @@ function LocalGameViewport({
         />
       ) : null}
 
-      {activeDrawer ? (
+      {visibleDrawer ? (
         <aside className="local-game-drawer is-open" role="dialog" aria-modal="true">
           <div className="local-game-drawer-header">
             <h2>{drawerTitle}</h2>

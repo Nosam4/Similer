@@ -523,6 +523,116 @@ function getContenderList(state) {
   return state.players.filter((player) => isContender(player))
 }
 
+function getArgumentPhaseKey(state) {
+  if (state.phase === 'postflop') {
+    return 'opening'
+  }
+
+  if (state.phase === 'debate') {
+    return 'closing'
+  }
+
+  return null
+}
+
+function getArgumentPhaseLabel(phaseKey) {
+  return phaseKey === 'opening' ? 'opening statement' : 'closing argument'
+}
+
+function ensureArgumentStatus(state) {
+  if (!state.argumentStatus || typeof state.argumentStatus !== 'object') {
+    state.argumentStatus = {}
+  }
+
+  if (!state.argumentStatus.opening || typeof state.argumentStatus.opening !== 'object') {
+    state.argumentStatus.opening = {}
+  }
+
+  if (!state.argumentStatus.closing || typeof state.argumentStatus.closing !== 'object') {
+    state.argumentStatus.closing = {}
+  }
+
+  return state.argumentStatus
+}
+
+function resetArgumentPhase(state, phaseKey) {
+  ensureArgumentStatus(state)[phaseKey] = {}
+}
+
+function getRequiredArgumentPlayerIds(state, phaseKey = getArgumentPhaseKey(state)) {
+  if (phaseKey !== 'opening' && phaseKey !== 'closing') {
+    return []
+  }
+
+  return getContenderList(state).map((player) => player.id)
+}
+
+function validateArgumentPhase(state, phaseKey) {
+  const currentPhaseKey = getArgumentPhaseKey(state)
+
+  if (phaseKey !== currentPhaseKey) {
+    throw new Error('Arguments can only be marked during the active argument phase.')
+  }
+}
+
+function hasPlayerCompletedArgument(state, playerId, phaseKey) {
+  const status = ensureArgumentStatus(state)[phaseKey] ?? {}
+  return Boolean(status[String(playerId)])
+}
+
+function areArgumentsComplete(state, phaseKey) {
+  const requiredPlayerIds = getRequiredArgumentPlayerIds(state, phaseKey)
+
+  return requiredPlayerIds.every((playerId) => {
+    return hasPlayerCompletedArgument(state, playerId, phaseKey)
+  })
+}
+
+function markArgumentInPlace(state, playerId, phaseKey) {
+  validateArgumentPhase(state, phaseKey)
+
+  const numericPlayerId = Number(playerId)
+  const requiredPlayerIds = getRequiredArgumentPlayerIds(state, phaseKey)
+
+  if (!requiredPlayerIds.includes(numericPlayerId)) {
+    throw new Error('Only active contenders need to mark arguments.')
+  }
+
+  const status = ensureArgumentStatus(state)[phaseKey]
+
+  if (status[String(numericPlayerId)]) {
+    return false
+  }
+
+  status[String(numericPlayerId)] = true
+  addLog(
+    state,
+    `${getPlayerNameById(state, numericPlayerId)} finished their ${getArgumentPhaseLabel(phaseKey)}.`,
+  )
+
+  return true
+}
+
+function forceCompleteArgumentsInPlace(state, phaseKey) {
+  validateArgumentPhase(state, phaseKey)
+
+  const status = ensureArgumentStatus(state)[phaseKey]
+
+  for (const playerId of getRequiredArgumentPlayerIds(state, phaseKey)) {
+    status[String(playerId)] = true
+  }
+
+  addLog(state, `${phaseKey === 'opening' ? 'Opening statements' : 'Closing arguments'} were advanced by table control.`)
+}
+
+function advanceIfOpeningArgumentsComplete(state) {
+  if (state.phase === 'postflop' && state.currentPlayerIndex === null && areArgumentsComplete(state, 'opening')) {
+    return moveToDebateStage(state)
+  }
+
+  return state
+}
+
 function getSeatIndexByPlayerId(state) {
   const lookup = new Map()
 
@@ -894,6 +1004,7 @@ function moveToDebateStage(state) {
 
   state.phase = 'debate'
   state.currentPlayerIndex = null
+  resetArgumentPhase(state, 'closing')
 
   if (state.showdownMode === 'similarityDuel') {
     addLog(
@@ -920,6 +1031,7 @@ function startNeutralJudgePhase(state, showdownMode) {
   state.judgeWord = drawNeutralJudgeWord(state)
   state.showdownMode = showdownMode
   state.phase = 'postflop'
+  resetArgumentPhase(state, 'opening')
 
   resetBettingRound(state)
 
@@ -938,7 +1050,7 @@ function startNeutralJudgePhase(state, showdownMode) {
   state.currentPlayerIndex = findNextActionableIndex(state, state.dealerIndex)
 
   if (state.currentPlayerIndex === null) {
-    return moveToDebateStage(state)
+    return advanceIfOpeningArgumentsComplete(state)
   }
 
   return state
@@ -988,6 +1100,7 @@ function startPlayerJudgePhase(state, judgeIndex, reason = null) {
   state.judgePlayerId = judge.id
   state.judgeWord = judge.holeWord
   state.phase = 'postflop'
+  resetArgumentPhase(state, 'opening')
 
   resetBettingRound(state)
 
@@ -1006,7 +1119,7 @@ function startPlayerJudgePhase(state, judgeIndex, reason = null) {
   state.currentPlayerIndex = findNextActionableIndex(state, state.dealerIndex)
 
   if (state.currentPlayerIndex === null) {
-    return moveToDebateStage(state)
+    return advanceIfOpeningArgumentsComplete(state)
   }
 
   return state
@@ -1018,6 +1131,11 @@ function advanceAfterCompletedBettingRound(state) {
   }
 
   if (state.phase === 'postflop') {
+    if (!areArgumentsComplete(state, 'opening')) {
+      state.currentPlayerIndex = null
+      return state
+    }
+
     return moveToDebateStage(state)
   }
 
@@ -1306,6 +1424,10 @@ function setUpNewHand(state, rng = Math.random) {
   state.judgeWord = null
   state.showdownMode = null
   state.showdown = null
+  state.argumentStatus = {
+    opening: {},
+    closing: {},
+  }
 
   for (const player of state.players) {
     player.inHand = player.stack > 0
@@ -1663,6 +1785,10 @@ export function createInitialGame(options = {}) {
     handComplete: false,
     tableComplete: false,
     showdown: null,
+    argumentStatus: {
+      opening: {},
+      closing: {},
+    },
     log: [],
   }
 
@@ -1678,6 +1804,10 @@ export function applyPlayerAction(previousState, action, amount) {
   const state = deepClone(previousState)
   const actorIndex = state.currentPlayerIndex
   const player = ensureCanAct(state)
+
+  if (state.phase === 'postflop' && !areArgumentsComplete(state, 'opening')) {
+    throw new Error('All opening arguments must be marked before betting.')
+  }
 
   if (action === 'fold') {
     applyFold(state, player)
@@ -1698,11 +1828,88 @@ export function applyPlayerAction(previousState, action, amount) {
   return applyPostActionState(state, actorIndex)
 }
 
-export function completeDebateStage(previousState) {
+export function markArgumentComplete(previousState, playerId, phaseKey = null) {
   const state = deepClone(previousState)
+  const targetPhaseKey = phaseKey ?? getArgumentPhaseKey(state)
+
+  markArgumentInPlace(state, playerId, targetPhaseKey)
+
+  if (targetPhaseKey === 'opening') {
+    return advanceIfOpeningArgumentsComplete(state)
+  }
+
+  if (targetPhaseKey === 'closing' && areArgumentsComplete(state, 'closing')) {
+    return completeDebateStage(state)
+  }
+
+  return state
+}
+
+export function forceCompleteArguments(previousState, phaseKey = null) {
+  const state = deepClone(previousState)
+  const targetPhaseKey = phaseKey ?? getArgumentPhaseKey(state)
+
+  forceCompleteArgumentsInPlace(state, targetPhaseKey)
+
+  if (targetPhaseKey === 'opening') {
+    return advanceIfOpeningArgumentsComplete(state)
+  }
+
+  if (targetPhaseKey === 'closing') {
+    return completeDebateStage(state, { force: true })
+  }
+
+  return state
+}
+
+export function getArgumentProgress(state, phaseKey = null) {
+  const targetPhaseKey = phaseKey ?? getArgumentPhaseKey(state)
+
+  if (targetPhaseKey !== 'opening' && targetPhaseKey !== 'closing') {
+    return {
+      phaseKey: targetPhaseKey,
+      speakers: [],
+      requiredPlayerIds: [],
+      arguedPlayerIds: [],
+      waitingPlayerIds: [],
+      complete: true,
+    }
+  }
+
+  const status = ensureArgumentStatus(deepClone(state))[targetPhaseKey]
+  const requiredPlayerIds = getRequiredArgumentPlayerIds(state, targetPhaseKey)
+  const speakers = requiredPlayerIds.map((playerId) => ({
+    playerId,
+    playerName: getPlayerNameById(state, playerId),
+    argued: Boolean(status[String(playerId)]),
+  }))
+  const arguedPlayerIds = speakers
+    .filter((speaker) => speaker.argued)
+    .map((speaker) => speaker.playerId)
+  const waitingPlayerIds = speakers
+    .filter((speaker) => !speaker.argued)
+    .map((speaker) => speaker.playerId)
+
+  return {
+    phaseKey: targetPhaseKey,
+    speakers,
+    requiredPlayerIds,
+    arguedPlayerIds,
+    waitingPlayerIds,
+    complete: waitingPlayerIds.length === 0,
+  }
+}
+
+export function completeDebateStage(previousState, options = {}) {
+  const state = deepClone(previousState)
+  const { force = false } = options
 
   if (state.phase !== 'debate') {
     throw new Error('Closing arguments can only be completed during the closing arguments phase.')
+  }
+
+  if (!force && !areArgumentsComplete(state, 'closing')) {
+    throw new Error('All closing arguments must be marked before advancing.')
   }
 
   if (state.showdownMode === 'similarityDuel') {

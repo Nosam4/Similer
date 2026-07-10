@@ -335,12 +335,6 @@ function OnlineRoomPanel({
           </span>
         ) : null}
 
-        {room && !isRoomPlaying ? (
-          <button type="button" disabled={busy || !myPlayer} onClick={handleToggleReady}>
-            {myPlayer?.is_ready ? 'Not Ready' : 'Ready'}
-          </button>
-        ) : null}
-
         {room && !isRoomPlaying && room.host_user_id === userId ? (
           <button
             type="button"

@@ -4,17 +4,9 @@ function DebatePanel({
   contenders,
   isFinalDuel = false,
   isNeutralVoting = false,
-  canCompleteDebate = true,
-  onCompleteDebate,
-  onlineGameBusy = false,
   pulseTick = 0,
 }) {
   const judgeLabel = judge ? `${judge.name}'s word` : 'Neutral judge word'
-  const buttonLabel = isFinalDuel
-    ? 'Reveal Similarity Winner'
-    : isNeutralVoting
-      ? 'Begin Player Voting'
-      : 'Begin Showdown Voting'
 
   return (
     <div
@@ -51,13 +43,7 @@ function DebatePanel({
         ))}
       </div>
 
-      {canCompleteDebate ? (
-        <button type="button" disabled={onlineGameBusy} onClick={onCompleteDebate}>
-          {buttonLabel}
-        </button>
-      ) : (
-        <p>Watch the debate. An active player can move the hand forward.</p>
-      )}
+      <p>Voting begins after every contender marks argued.</p>
     </div>
   )
 }

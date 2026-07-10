@@ -121,6 +121,14 @@ function HandCompletePanel({
       key={`hand-complete-panel-${pulseTick}`}
       className={`hand-complete-panel${pulseTick > 0 ? ' stage-pulse stage-pulse-strong' : ''}`}
     >
+      <button
+        type="button"
+        disabled={actionDisabled}
+        onClick={game.tableComplete ? onStartNewGame : onBeginNextHand}
+      >
+        {game.tableComplete ? 'Start New Game' : 'Start Next Hand'}
+      </button>
+
       <h3>Hand Complete</h3>
       {tableWinner ? (
         <p key={`table-winner-line-${winnerPulseTick}`} className={winnerLineClassName}>
@@ -211,14 +219,6 @@ function HandCompletePanel({
       ) : null}
 
       {renderAllSimilarityScores()}
-
-      <button
-        type="button"
-        disabled={actionDisabled}
-        onClick={game.tableComplete ? onStartNewGame : onBeginNextHand}
-      >
-        {game.tableComplete ? 'Start New Game' : 'Start Next Hand'}
-      </button>
     </div>
   )
 }
