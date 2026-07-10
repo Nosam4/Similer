@@ -1085,6 +1085,17 @@
   font-size: 0.92rem;
 }
 
+.stage-overlay-error {
+  margin: 14px auto 0;
+  max-width: 520px;
+  border: 1px solid rgba(255, 119, 103, 0.36);
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: #ffd6cf;
+  background: rgba(90, 18, 15, 0.3);
+  font-size: 0.86rem;
+}
+
 .busted-panel {
   border: 1px solid rgba(155, 35, 30, 0.35);
   border-radius: 12px;

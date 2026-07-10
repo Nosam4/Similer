@@ -110,6 +110,16 @@ function getLocalArgumentMarkPlayerId(progress, actor = null) {
   return requiredPlayerIds[0] ?? null
 }
 
+function getGameCommandErrorMessage(error, fallback) {
+  const message = error instanceof Error ? error.message : fallback
+
+  if (/Unknown game command: (markArgumentComplete|forceCompleteArguments)/.test(message)) {
+    return `${message}. Deploy the updated Supabase game-action Edge Function.`
+  }
+
+  return message
+}
+
 function getLocalTestPlayerNames(playerCount) {
   return LOCAL_TEST_PLAYER_NAMES.slice(0, playerCount)
 }
@@ -553,7 +563,7 @@ function App() {
 
       setErrorText('')
     } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Could not mark argument complete.')
+      setErrorText(getGameCommandErrorMessage(error, 'Could not mark argument complete.'))
     } finally {
       setOnlineGameBusy(false)
     }
@@ -577,7 +587,7 @@ function App() {
 
       setErrorText('')
     } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Could not override arguments.')
+      setErrorText(getGameCommandErrorMessage(error, 'Could not override arguments.'))
     } finally {
       setOnlineGameBusy(false)
     }
@@ -755,7 +765,7 @@ function App() {
 
     return {
       ...revealByPlayerId,
-      [myOnlineSeatIndex]: true,
+      [myOnlineSeatIndex]: Boolean(revealByPlayerId[myOnlineSeatIndex]),
     }
   }, [isOnlinePlaying, myOnlineSeatIndex, revealByPlayerId])
   const tableWinner = game.tableComplete
@@ -838,9 +848,11 @@ function App() {
     }
 
     setRevealByPlayerId((previous) => {
+      const currentlyVisible = Boolean(previous[playerId])
+
       return {
         ...previous,
-        [playerId]: !previous[playerId],
+        [playerId]: !currentlyVisible,
       }
     })
   }
@@ -863,6 +875,7 @@ function App() {
       markPlayerId={stageOverlayConfig?.markPlayerId}
       canOverride={Boolean(stageOverlayConfig && canForceCompleteArguments)}
       busy={isOnlinePlaying ? onlineGameBusy : false}
+      errorText={stageOverlayConfig ? visibleErrorText : ''}
       onMarkArgument={markArgument}
       onForceComplete={forceCompleteArgumentPhase}
     />
@@ -883,7 +896,8 @@ function App() {
       handComplete={game.handComplete}
       revealByPlayerId={effectiveRevealByPlayerId}
       onToggleWordReveal={toggleWordReveal}
-      showWordControls={!isOnlinePlaying}
+      showWordControls
+      wordControlPlayerId={isOnlinePlaying ? myOnlineSeatIndex : null}
       viewerPlayerId={isOnlinePlaying ? myOnlineSeatIndex : null}
       delayJudgeTransfer={isOpeningArgumentGate}
     />

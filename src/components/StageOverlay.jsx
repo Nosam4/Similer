@@ -10,6 +10,7 @@ function StageOverlay({
   markPlayerId = null,
   canOverride = false,
   busy = false,
+  errorText = '',
   onMarkArgument,
   onForceComplete,
 }) {
@@ -85,6 +86,11 @@ function StageOverlay({
               </button>
             ) : null}
           </div>
+        ) : null}
+        {errorText ? (
+          <p className="stage-overlay-error" role="alert">
+            {errorText}
+          </p>
         ) : null}
       </div>
     </aside>

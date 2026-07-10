@@ -125,6 +125,7 @@ function PokerTable({
   revealByPlayerId,
   onToggleWordReveal,
   showWordControls = true,
+  wordControlPlayerId = null,
   viewerPlayerId = null,
   delayJudgeTransfer = false,
 }) {
@@ -274,9 +275,13 @@ function PokerTable({
             const isActor = currentPlayerId === player.id
             const forceWordVisible =
               player.isJudge || phase === 'debate' || phase === 'showdownVoting' || handComplete
-            const isViewerPlayer = viewerPlayerId === player.id
             const isWordVisible =
-              forceWordVisible || Boolean(revealByPlayerId[player.id]) || Boolean(isViewerPlayer && player.holeWord)
+              forceWordVisible || Boolean(revealByPlayerId[player.id])
+            const canControlWord =
+              showWordControls &&
+              player.inHand &&
+              !forceWordVisible &&
+              (wordControlPlayerId === null || wordControlPlayerId === player.id)
             const status = summarizePlayerStatus(player, isActor)
             const wordText = getWordText(player, isWordVisible)
 
@@ -298,7 +303,7 @@ function PokerTable({
                 <div className="seat-panels">
                   <div className="seat-panel seat-word-panel">
                     <strong title={wordText}>{wordText}</strong>
-                    {showWordControls && player.inHand && !forceWordVisible ? (
+                    {canControlWord ? (
                       <button
                         type="button"
                         className="word-eye-button"
