@@ -38,7 +38,7 @@ function LocalGameViewport({
       <header className="local-game-topbar">
         <div className="local-game-brand">
           <span>{eyebrow}</span>
-          <strong>WhatGame</strong>
+          <strong>Similer</strong>
         </div>
 
         <div className="local-game-header-room">{headerPanel}</div>

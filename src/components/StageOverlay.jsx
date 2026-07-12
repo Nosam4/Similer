@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 function StageOverlay({
   activeKey,
   title,
@@ -8,12 +10,21 @@ function StageOverlay({
   speakers = [],
   phaseKey = null,
   markPlayerId = null,
+  ownWord = '',
   canOverride = false,
   busy = false,
   errorText = '',
   onMarkArgument,
   onForceComplete,
 }) {
+  const ownWordVisibilityKey = `${activeKey}:${ownWord}`
+  const [ownWordVisibility, setOwnWordVisibility] = useState({
+    key: ownWordVisibilityKey,
+    visible: false,
+  })
+  const showOwnWord =
+    ownWordVisibility.key === ownWordVisibilityKey ? ownWordVisibility.visible : false
+
   if (!activeKey) {
     return null
   }
@@ -21,6 +32,7 @@ function StageOverlay({
   const arguedCount = speakers.filter((speaker) => speaker.argued).length
   const totalCount = speakers.length
   const markedSpeaker = speakers.find((speaker) => speaker.playerId === markPlayerId) ?? null
+  const canShowOwnWord = Boolean(markedSpeaker && ownWord)
   const canMarkArgument = Boolean(
     phaseKey &&
       markedSpeaker &&
@@ -51,6 +63,28 @@ function StageOverlay({
           {wordLabel}: <b>{judgeWord ?? 'revealed word'}</b>
         </p>
         <p>{message}</p>
+        {canShowOwnWord ? (
+          <div className="stage-overlay-own-word">
+            <label>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={showOwnWord}
+                onChange={(event) => {
+                  setOwnWordVisibility({
+                    key: ownWordVisibilityKey,
+                    visible: event.target.checked,
+                  })
+                }}
+              />
+              <span className="stage-overlay-switch" aria-hidden="true" />
+              <span>{showOwnWord ? 'Hide my word' : 'Show my word'}</span>
+            </label>
+            <p>
+              Your word: <b>{showOwnWord ? ownWord : '••••••'}</b>
+            </p>
+          </div>
+        ) : null}
         {speakers.some((speaker) => speaker.word) ? (
           <div className="stage-overlay-words" aria-label="Revealed player words">
             {speakers.map((speaker) => (

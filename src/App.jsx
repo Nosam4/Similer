@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
-  applyPlayerAction,
   createInitialGame,
-  forceCompleteArguments,
   getArgumentProgress,
   getContenders,
   getCurrentActor,
@@ -13,38 +11,24 @@ import {
   getPlayerVoteVoters,
   getPotSummary,
   getWordBankSize,
-  markArgumentComplete,
-  resolveShowdownVotes,
-  startNextHand,
 } from './wordgame/engine'
 import { DEFAULT_WORD_PACK_ID, WORD_PACKS, getWordPackById } from './wordgame/wordPacks'
 import ActionLogPanel from './components/ActionLogPanel'
-import BustedPanel from './components/BustedPanel'
 import ConfettiComponent from './components/ConfettiComponent'
-import DebatePanel from './components/DebatePanel'
-import HandCompletePanel from './components/HandCompletePanel'
 import LocalGameViewport from './components/LocalGameViewport'
 import LocalTestControls from './components/LocalTestControls'
 import OnlineRoomPanel from './components/OnlineRoomPanel'
 import PokerTable from './components/PokerTable'
-import ShowdownVotingPanel from './components/ShowdownVotingPanel'
-import StageOverlay from './components/StageOverlay'
-import TurnPanel from './components/TurnPanel'
-import {
-  fetchAccessibleHandWords,
-  fetchShowdownVoteStatuses,
-  invokeGameCommand,
-  submitShowdownVote,
-} from './multiplayer/roomApi'
+import ArgumentStageOverlay from './components/game/ArgumentStageOverlay'
+import GameActionPanel from './components/game/GameActionPanel'
 import {
   buildSubmittedPlayerVoteIds,
-  buildWordMap,
   hasSubmittedJudgeVote,
-  hydrateGameWithWords,
 } from './multiplayer/privateGameState'
+import { useGameActions } from './game/useGameActions'
+import { useOnlineGameState } from './game/useOnlineGameState'
 
 const PLAYER_NAMES = ['North', 'East', 'South', 'West']
-const LOCAL_TEST_PLAYER_NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 const STARTING_STACK = 400
 const ANTE = 10
 const MIN_BET = 10
@@ -60,46 +44,6 @@ const INITIAL_PULSE_TICKS = {
   winnerLine: 0,
 }
 
-function isWordGameState(candidate) {
-  return (
-    candidate &&
-    typeof candidate === 'object' &&
-    Array.isArray(candidate.players) &&
-    typeof candidate.phase === 'string' &&
-    typeof candidate.handNumber === 'number'
-  )
-}
-
-function getOnlinePlayerNames(players) {
-  const names = [...players]
-    .sort((left, right) => left.seat_index - right.seat_index)
-    .map((player) => String(player.display_name).trim())
-    .filter(Boolean)
-
-  return names.length >= 3 ? names : PLAYER_NAMES
-}
-
-function getRestartPlayerNames(game, onlineSession) {
-  if (onlineSession?.players?.length >= 3) {
-    return getOnlinePlayerNames(onlineSession.players)
-  }
-
-  return game.players.map((player) => player.name)
-}
-
-function buildArgumentSpeakerRows(game, progress, includeWords = false) {
-  const playerById = new Map(game.players.map((player) => [player.id, player]))
-
-  return (progress?.speakers ?? []).map((speaker) => {
-    const player = playerById.get(speaker.playerId)
-
-    return {
-      ...speaker,
-      word: includeWords ? player?.holeWord ?? '' : '',
-    }
-  })
-}
-
 function getLocalArgumentMarkPlayerId(progress, actor = null) {
   const requiredPlayerIds = progress?.requiredPlayerIds ?? []
 
@@ -108,20 +52,6 @@ function getLocalArgumentMarkPlayerId(progress, actor = null) {
   }
 
   return requiredPlayerIds[0] ?? null
-}
-
-function getGameCommandErrorMessage(error, fallback) {
-  const message = error instanceof Error ? error.message : fallback
-
-  if (/Unknown game command: (markArgumentComplete|forceCompleteArguments)/.test(message)) {
-    return `${message}. Deploy the updated Supabase game-action Edge Function.`
-  }
-
-  return message
-}
-
-function getLocalTestPlayerNames(playerCount) {
-  return LOCAL_TEST_PLAYER_NAMES.slice(0, playerCount)
 }
 
 function App() {
@@ -140,41 +70,29 @@ function App() {
   const [revealByPlayerId, setRevealByPlayerId] = useState({})
   const [playerVotes, setPlayerVotes] = useState({})
   const [judgeVote, setJudgeVote] = useState('')
-  const [onlineSession, setOnlineSession] = useState(null)
-  const [onlineWordsByPlayerId, setOnlineWordsByPlayerId] = useState({})
-  const [onlineVoteStatusRows, setOnlineVoteStatusRows] = useState([])
-  const [onlinePrivateDataKey, setOnlinePrivateDataKey] = useState('')
-  const [onlinePrivateRefreshTick, setOnlinePrivateRefreshTick] = useState(0)
-  const [onlineGameBusy, setOnlineGameBusy] = useState(false)
   const [pulseTicks, setPulseTicks] = useState(INITIAL_PULSE_TICKS)
   const previousPhaseRef = useRef(null)
-
-  const onlineGame = useMemo(() => {
-    const candidate = onlineSession?.roomState?.state_json
-    return isWordGameState(candidate) ? candidate : null
-  }, [onlineSession?.roomState?.state_json])
-  const onlinePrivateKey =
-    onlineSession?.room?.id && onlineGame?.handNumber
-      ? `${onlineSession.room.id}:${onlineGame.handNumber}`
-      : ''
-  const activeOnlineWordsByPlayerId = useMemo(() => {
-    return onlinePrivateDataKey === onlinePrivateKey ? onlineWordsByPlayerId : {}
-  }, [onlinePrivateDataKey, onlinePrivateKey, onlineWordsByPlayerId])
-  const activeOnlineVoteStatusRows = useMemo(() => {
-    return onlinePrivateDataKey === onlinePrivateKey ? onlineVoteStatusRows : []
-  }, [onlinePrivateDataKey, onlinePrivateKey, onlineVoteStatusRows])
-  const hydratedOnlineGame = useMemo(() => {
-    return hydrateGameWithWords(onlineGame, activeOnlineWordsByPlayerId)
-  }, [activeOnlineWordsByPlayerId, onlineGame])
+  const {
+    activeOnlineVoteStatusRows,
+    applyOnlineCommandResult,
+    handleOnlineSessionChange,
+    handlePrivateDataChange,
+    hydratedOnlineGame,
+    isOnlinePlaying,
+    isOnlineRoomConnected,
+    isOnlineWaiting,
+    myOnlineSeatIndex,
+    onlineGameBusy,
+    onlineSession,
+    onlineWaitingCopy,
+    roomId,
+    setOnlineGameBusy,
+    setOnlinePrivateDataKey,
+    setOnlineVoteStatusRows,
+    userId,
+  } = useOnlineGameState({ setErrorText })
   const localWordPack = useMemo(() => getWordPackById(localWordPackId), [localWordPackId])
 
-  const isOnlineRoomConnected = Boolean(onlineSession?.room)
-  const isOnlinePlaying = Boolean(onlineSession?.room?.status === 'playing' && hydratedOnlineGame)
-  const isOnlineWaiting = isOnlineRoomConnected && !isOnlinePlaying
-  const onlineWaitingCopy =
-    onlineSession?.room?.status === 'playing'
-      ? 'Loading the online game state. Players should wait here while the room syncs.'
-      : 'Online room is waiting. Wait for seats to fill, then start the online game from the room controls.'
   const game = isOnlinePlaying ? hydratedOnlineGame : localGame
   const openingArgumentProgress = useMemo(() => {
     return getArgumentProgress(game, 'opening')
@@ -197,12 +115,6 @@ function App() {
   const judge = getJudgePlayer(game)
   const contenders = getContenders(game)
   const playerVoteVoters = getPlayerVoteVoters(game)
-  const openingArgumentSpeakers = useMemo(() => {
-    return buildArgumentSpeakerRows(game, openingArgumentProgress)
-  }, [game, openingArgumentProgress])
-  const closingArgumentSpeakers = useMemo(() => {
-    return buildArgumentSpeakerRows(game, closingArgumentProgress, true)
-  }, [game, closingArgumentProgress])
 
   const isShowdownVoting = game.phase === 'showdownVoting'
   const isDebate = game.phase === 'debate'
@@ -279,75 +191,6 @@ function App() {
         }) &&
         (!judge || effectiveJudgeVote !== ''))
 
-  const myOnlineSeatIndex = onlineSession?.myPlayer?.seat_index ?? null
-  const roomId = onlineSession?.room?.id ?? null
-  const roomStateVersion = onlineSession?.roomState?.version ?? null
-  const userId = onlineSession?.userId ?? null
-
-  useEffect(() => {
-    if (!roomId || !onlineGame?.handNumber || !roomStateVersion) {
-      return undefined
-    }
-
-    let isCancelled = false
-    const privateDataKey = `${roomId}:${onlineGame.handNumber}`
-
-    async function refreshPrivateOnlineData() {
-      try {
-        const [wordRows, voteRows] = await Promise.all([
-          fetchAccessibleHandWords({
-            roomId,
-            handNumber: onlineGame.handNumber,
-          }),
-          onlineGame.phase === 'showdownVoting'
-            ? fetchShowdownVoteStatuses({
-                roomId,
-                handNumber: onlineGame.handNumber,
-              })
-            : Promise.resolve([]),
-        ])
-
-        if (isCancelled) {
-          return
-        }
-
-        setOnlineWordsByPlayerId(buildWordMap(wordRows))
-        setOnlineVoteStatusRows(voteRows)
-        setOnlinePrivateDataKey(privateDataKey)
-      } catch (error) {
-        if (!isCancelled) {
-          setErrorText(error instanceof Error ? error.message : 'Unable to refresh private game data.')
-        }
-      }
-    }
-
-    refreshPrivateOnlineData()
-
-    return () => {
-      isCancelled = true
-    }
-  }, [
-    onlineGame?.handNumber,
-    onlineGame?.phase,
-    onlinePrivateRefreshTick,
-    roomId,
-    roomStateVersion,
-  ])
-
-  const applyOnlineCommandResult = useCallback((result) => {
-    setOnlineSession((previous) => {
-      if (!previous) {
-        return previous
-      }
-
-      return {
-        ...previous,
-        roomState: result.roomState ?? previous.roomState,
-        room: result.room ?? previous.room,
-      }
-    })
-  }, [])
-
   useEffect(() => {
     const previousPhase = previousPhaseRef.current
 
@@ -385,357 +228,6 @@ function App() {
     })
   }, [game.phase])
 
-  async function runAction(type, amountOverride) {
-    try {
-      if (isOnlinePlaying) {
-        setOnlineGameBusy(true)
-        const result = await invokeGameCommand({
-          roomId,
-          command: 'playerAction',
-          payload: {
-            type,
-            amount: amountOverride ?? Number(amountInput),
-          },
-        })
-        applyOnlineCommandResult(result)
-
-        const nextLegal = getLegalActions(result.roomState.state_json)
-        if (nextLegal.raise) {
-          setAmountInput(String(nextLegal.minRaiseTo))
-        } else if (nextLegal.bet) {
-          setAmountInput(String(nextLegal.minBetTo))
-        }
-      } else {
-        const nextGame = applyPlayerAction(
-          game,
-          type,
-          amountOverride ?? Number(amountInput),
-        )
-        setLocalGame(nextGame)
-
-        const nextLegal = getLegalActions(nextGame)
-        if (nextLegal.raise) {
-          setAmountInput(String(nextLegal.minRaiseTo))
-        } else if (nextLegal.bet) {
-          setAmountInput(String(nextLegal.minBetTo))
-        }
-      }
-      setErrorText('')
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Action failed.')
-    } finally {
-      setOnlineGameBusy(false)
-    }
-  }
-
-  async function beginNextHand() {
-    try {
-      if (isOnlinePlaying) {
-        setOnlineGameBusy(true)
-        const result = await invokeGameCommand({
-          roomId,
-          command: 'startNextHand',
-        })
-        applyOnlineCommandResult(result)
-      } else {
-        const nextGame = startNextHand(game)
-        setLocalGame(nextGame)
-      }
-      setErrorText('')
-      setAmountInput('')
-      setPlayerVotes({})
-      setJudgeVote('')
-      setRevealByPlayerId({})
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Could not start next hand.')
-    } finally {
-      setOnlineGameBusy(false)
-    }
-  }
-
-  async function startNewGame() {
-    try {
-      if (isOnlinePlaying) {
-        setOnlineGameBusy(true)
-        const result = await invokeGameCommand({
-          roomId,
-          command: 'startNewGame',
-          payload: {
-            startingStack: STARTING_STACK,
-            ante: ANTE,
-            bigBlind: MIN_BET,
-          },
-        })
-        applyOnlineCommandResult(result)
-      } else {
-        const nextGame = createInitialGame({
-          playerNames: getRestartPlayerNames(game, onlineSession),
-          startingStack: STARTING_STACK,
-          ante: ANTE,
-          bigBlind: MIN_BET,
-          wordPack: localWordPack,
-        })
-        setLocalGame(nextGame)
-      }
-      setErrorText('')
-      setAmountInput('')
-      setPlayerVotes({})
-      setJudgeVote('')
-      setRevealByPlayerId({})
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Could not start a new game.')
-    } finally {
-      setOnlineGameBusy(false)
-    }
-  }
-
-  function restartLocalTestGame(playerCount, wordPack = localWordPack) {
-    const nextGame = createInitialGame({
-      playerNames: getLocalTestPlayerNames(playerCount),
-      startingStack: STARTING_STACK,
-      ante: ANTE,
-      bigBlind: MIN_BET,
-      wordPack,
-    })
-
-    setLocalGame(nextGame)
-    setAmountInput('')
-    setErrorText('')
-    setRevealByPlayerId({})
-    setPlayerVotes({})
-    setJudgeVote('')
-    setPulseTicks(INITIAL_PULSE_TICKS)
-    previousPhaseRef.current = null
-  }
-
-  function handleSelectLocalWordPack(wordPackId) {
-    const nextWordPack = getWordPackById(wordPackId)
-
-    setLocalWordPackId(nextWordPack.id)
-    restartLocalTestGame(localGame.players.length, nextWordPack)
-  }
-
-  async function resolveVotes() {
-    try {
-      if (isOnlinePlaying && !canResolveVotes) {
-        setErrorText('Waiting for all showdown votes.')
-        return
-      }
-
-      if (isOnlinePlaying) {
-        setOnlineGameBusy(true)
-        const result = await invokeGameCommand({
-          roomId,
-          command: 'resolveVotes',
-        })
-        applyOnlineCommandResult(result)
-      } else {
-        const nextGame = resolveShowdownVotes(game, {
-          playerVotes: effectivePlayerVotes,
-          judgeVote: judge ? Number(effectiveJudgeVote) : null,
-        })
-        setLocalGame(nextGame)
-      }
-      setErrorText('')
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Vote resolution failed.')
-    } finally {
-      setOnlineGameBusy(false)
-    }
-  }
-
-  async function markArgument(playerId, phaseKey) {
-    try {
-      if (isOnlinePlaying) {
-        setOnlineGameBusy(true)
-        const result = await invokeGameCommand({
-          roomId,
-          command: 'markArgumentComplete',
-          payload: {
-            playerId,
-            phaseKey,
-          },
-        })
-        applyOnlineCommandResult(result)
-      } else {
-        setLocalGame(markArgumentComplete(game, playerId, phaseKey))
-      }
-
-      setErrorText('')
-    } catch (error) {
-      setErrorText(getGameCommandErrorMessage(error, 'Could not mark argument complete.'))
-    } finally {
-      setOnlineGameBusy(false)
-    }
-  }
-
-  async function forceCompleteArgumentPhase(phaseKey) {
-    try {
-      if (isOnlinePlaying) {
-        setOnlineGameBusy(true)
-        const result = await invokeGameCommand({
-          roomId,
-          command: 'forceCompleteArguments',
-          payload: {
-            phaseKey,
-          },
-        })
-        applyOnlineCommandResult(result)
-      } else {
-        setLocalGame(forceCompleteArguments(game, phaseKey))
-      }
-
-      setErrorText('')
-    } catch (error) {
-      setErrorText(getGameCommandErrorMessage(error, 'Could not override arguments.'))
-    } finally {
-      setOnlineGameBusy(false)
-    }
-  }
-
-  async function submitOnlinePlayerVote() {
-    const selectedVote = onlinePlayerVoteValue
-    const voterId = myOnlineSeatIndex
-    const targetId = Number(selectedVote)
-
-    if (!isOnlinePlaying || !isShowdownVoting || voterId === null) {
-      return
-    }
-
-    const voter = playerVoteVoters.find((player) => player.id === voterId)
-
-    if (!voter) {
-      setErrorText('The Judge does not submit a Player Vote.')
-      return
-    }
-
-    if (!contenders.some((player) => player.id === targetId)) {
-      setErrorText('Choose a valid player vote before submitting.')
-      return
-    }
-
-    if (contenders.some((player) => player.id === voterId) && targetId === voterId) {
-      setErrorText('Choose another player. You cannot vote for your own word.')
-      return
-    }
-
-    try {
-      setOnlineGameBusy(true)
-      await submitShowdownVote({
-        roomId,
-        handNumber: game.handNumber,
-        voterPlayerId: voterId,
-        voteType: 'player',
-        targetPlayerId: targetId,
-      })
-      setOnlineVoteStatusRows((previous) => {
-        const filtered = previous.filter((row) => {
-          return !(row.vote_type === 'player' && Number(row.voter_player_id) === voterId)
-        })
-
-        return [
-          ...filtered,
-          {
-            vote_type: 'player',
-            voter_player_id: voterId,
-            submitted: true,
-          },
-        ]
-      })
-      setOnlinePrivateDataKey(`${roomId}:${game.handNumber}`)
-      setErrorText('')
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Unable to submit player vote.')
-    } finally {
-      setOnlineGameBusy(false)
-    }
-  }
-
-  async function submitOnlineJudgeVote() {
-    const targetId = Number(onlineJudgeVoteValue)
-
-    if (!isOnlinePlaying || !isShowdownVoting || judge?.id !== myOnlineSeatIndex) {
-      return
-    }
-
-    if (!contenders.some((player) => player.id === targetId)) {
-      setErrorText('Choose a valid judge vote before submitting.')
-      return
-    }
-
-    try {
-      setOnlineGameBusy(true)
-      await submitShowdownVote({
-        roomId,
-        handNumber: game.handNumber,
-        voterPlayerId: myOnlineSeatIndex,
-        voteType: 'judge',
-        targetPlayerId: targetId,
-      })
-      setOnlineVoteStatusRows((previous) => {
-        const filtered = previous.filter((row) => row.vote_type !== 'judge')
-
-        return [
-          ...filtered,
-          {
-            vote_type: 'judge',
-            voter_player_id: myOnlineSeatIndex,
-            submitted: true,
-          },
-        ]
-      })
-      setOnlinePrivateDataKey(`${roomId}:${game.handNumber}`)
-      setErrorText('')
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Unable to submit judge vote.')
-    } finally {
-      setOnlineGameBusy(false)
-    }
-  }
-
-  const handleOnlineSessionChange = useCallback((nextSession) => {
-    setOnlineSession(nextSession)
-  }, [])
-  const handlePrivateDataChange = useCallback(() => {
-    setOnlinePrivateRefreshTick((previous) => previous + 1)
-  }, [])
-
-  async function handleStartOnlineGame() {
-    if (!onlineSession?.room?.id || !userId) {
-      setErrorText('Join a room before starting an online game.')
-      return
-    }
-
-    if (onlineSession.room.host_user_id !== userId) {
-      setErrorText('Only the room host can start the online game.')
-      return
-    }
-
-    try {
-      setOnlineGameBusy(true)
-      const result = await invokeGameCommand({
-        roomId,
-        command: 'startGame',
-        payload: {
-          startingStack: STARTING_STACK,
-          ante: ANTE,
-          bigBlind: MIN_BET,
-        },
-      })
-      applyOnlineCommandResult(result)
-
-      setErrorText('')
-      setAmountInput('')
-      setPlayerVotes({})
-      setJudgeVote('')
-      setRevealByPlayerId({})
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Unable to start online game.')
-    } finally {
-      setOnlineGameBusy(false)
-    }
-  }
-
   const myOnlinePlayer =
     isOnlinePlaying && myOnlineSeatIndex !== null
       ? game.players.find((player) => player.id === myOnlineSeatIndex) ?? null
@@ -758,6 +250,55 @@ function App() {
   const onlinePlayerVoteValue =
     myOnlineSeatIndex === null ? '' : playerVotes[myOnlineSeatIndex] ?? ''
   const onlineJudgeVoteValue = judgeVote
+  const {
+    beginNextHand,
+    forceCompleteArgumentPhase,
+    handleSelectLocalWordPack,
+    handleStartOnlineGame,
+    markArgument,
+    resolveVotes,
+    restartLocalTestGame,
+    runAction,
+    startNewGame,
+    submitOnlineJudgeVote,
+    submitOnlinePlayerVote,
+  } = useGameActions({
+    amountInput,
+    ante: ANTE,
+    applyOnlineCommandResult,
+    bigBlind: MIN_BET,
+    canResolveVotes,
+    contenders,
+    effectiveJudgeVote,
+    effectivePlayerVotes,
+    game,
+    initialPulseTicks: INITIAL_PULSE_TICKS,
+    isOnlinePlaying,
+    isShowdownVoting,
+    judge,
+    localGame,
+    localWordPack,
+    myOnlineSeatIndex,
+    onlineJudgeVoteValue,
+    onlinePlayerVoteValue,
+    onlineSession,
+    playerVoteVoters,
+    previousPhaseRef,
+    roomId,
+    setAmountInput,
+    setErrorText,
+    setJudgeVote,
+    setLocalGame,
+    setLocalWordPackId,
+    setOnlineGameBusy,
+    setOnlinePrivateDataKey,
+    setOnlineVoteStatusRows,
+    setPlayerVotes,
+    setPulseTicks,
+    setRevealByPlayerId,
+    startingStack: STARTING_STACK,
+    userId,
+  })
   const effectiveRevealByPlayerId = useMemo(() => {
     if (!isOnlinePlaying || myOnlineSeatIndex === null) {
       return revealByPlayerId
@@ -811,36 +352,6 @@ function App() {
     isJudgeWordLive &&
     !openingArgumentProgress.complete &&
     openingArgumentProgress.speakers.length > 0
-  const isClosingArgumentGate =
-    isDebate &&
-    !closingArgumentProgress.complete &&
-    closingArgumentProgress.speakers.length > 0
-  const stageOverlayConfig = isOpeningArgumentGate
-    ? {
-        activeKey: `opening-arguments-${game.handNumber}`,
-        kicker: 'Judge Word Live',
-        title: 'OPENING ARGUMENTS',
-        wordLabel: judge ? `${judge.name} reveals` : 'Judge word',
-        message:
-          'Make your opening argument, then mark argued. Betting resumes after every active player is marked.',
-        speakers: openingArgumentSpeakers,
-        phaseKey: 'opening',
-        markPlayerId: openingArgumentMarkPlayerId,
-      }
-    : isClosingArgumentGate
-      ? {
-          activeKey: `closing-arguments-${game.handNumber}`,
-          kicker: 'Words Revealed',
-          title: 'CLOSING ARGUMENTS',
-          wordLabel: judge ? `${judge.name}'s judge word` : 'Neutral judge word',
-          judgeWord,
-          message:
-            'Argue the revealed words. Voting begins after every contender is marked.',
-          speakers: closingArgumentSpeakers,
-          phaseKey: 'closing',
-          markPlayerId: closingArgumentMarkPlayerId,
-        }
-      : null
 
   function toggleWordReveal(playerId) {
     if (isOnlinePlaying && myOnlineSeatIndex !== null && playerId !== myOnlineSeatIndex) {
@@ -863,19 +374,19 @@ function App() {
       ? 'Online Setup'
       : 'Local Table'
   const viewportStageOverlay = (
-    <StageOverlay
-      activeKey={stageOverlayConfig?.activeKey ?? ''}
-      kicker={stageOverlayConfig?.kicker}
-      title={stageOverlayConfig?.title}
-      judgeWord={judgeWord}
-      wordLabel={stageOverlayConfig?.wordLabel}
-      message={stageOverlayConfig?.message}
-      speakers={stageOverlayConfig?.speakers}
-      phaseKey={stageOverlayConfig?.phaseKey}
-      markPlayerId={stageOverlayConfig?.markPlayerId}
-      canOverride={Boolean(stageOverlayConfig && canForceCompleteArguments)}
+    <ArgumentStageOverlay
       busy={isOnlinePlaying ? onlineGameBusy : false}
-      errorText={stageOverlayConfig ? visibleErrorText : ''}
+      canForceCompleteArguments={canForceCompleteArguments}
+      closingArgumentMarkPlayerId={closingArgumentMarkPlayerId}
+      closingArgumentProgress={closingArgumentProgress}
+      errorText={visibleErrorText}
+      game={game}
+      isDebate={isDebate}
+      isJudgeWordLive={isJudgeWordLive}
+      judge={judge}
+      judgeWord={judgeWord}
+      openingArgumentMarkPlayerId={openingArgumentMarkPlayerId}
+      openingArgumentProgress={openingArgumentProgress}
       onMarkArgument={markArgument}
       onForceComplete={forceCompleteArgumentPhase}
     />
@@ -912,99 +423,51 @@ function App() {
     />
   ) : null
   const viewportActionPanel = (
-    <section className="controls local-game-controls">
-      {isOnlineWaiting ? (
-        <>
-          <div className="notice">
-            <p>{onlineWaitingCopy}</p>
-          </div>
-
-          {visibleErrorText ? <p className="error-text">{visibleErrorText}</p> : null}
-        </>
-      ) : (
-        <>
-          {game.tableComplete ? (
-            <div className="notice">
-              <p>Table over: only one player has chips remaining.</p>
-            </div>
-          ) : null}
-
-          {isOnlinePlaying && isBustedOnline && !game.handComplete && !isDebate && !isShowdownVoting ? (
-            <BustedPanel playerName={myOnlinePlayer?.name} />
-          ) : game.handComplete ? (
-            <HandCompletePanel
-              game={game}
-              onBeginNextHand={beginNextHand}
-              onStartNewGame={startNewGame}
-              actionDisabled={isOnlinePlaying ? onlineGameBusy || !isOnlineHost : false}
-              pulseTick={pulseTicks.handPanel}
-              winnerPulseTick={pulseTicks.winnerLine}
-            />
-          ) : isDebate ? (
-            <DebatePanel
-              judge={judge}
-              judgeWord={judgeWord}
-              contenders={contenders}
-              isFinalDuel={isFinalDuel}
-              isNeutralVoting={isNeutralVoting}
-              pulseTick={pulseTicks.debatePanel}
-            />
-          ) : isShowdownVoting ? (
-            <ShowdownVotingPanel
-              judge={judge}
-              judgeWord={judgeWord}
-              contenders={contenders}
-              playerVoteVoters={playerVoteVoters}
-              defaultPlayerVotes={defaultPlayerVotes}
-              effectivePlayerVotes={effectivePlayerVotes}
-              setPlayerVotes={setPlayerVotes}
-              effectiveJudgeVote={effectiveJudgeVote}
-              setJudgeVote={setJudgeVote}
-              canResolveVotes={canResolveVotes}
-              onResolveVotes={resolveVotes}
-              pulseTick={pulseTicks.showdownPanel}
-              isOnlinePlaying={isOnlinePlaying}
-              myPlayerId={isOnlinePlaying ? myOnlineSeatIndex : null}
-              submittedPlayerVoteIds={onlineSubmittedPlayerVoteIds}
-              submittedPlayerVoteCount={submittedPlayerVoteCount}
-              judgeVoteSubmitted={judgeVoteSubmitted}
-              usesJudgeVote={Boolean(judge)}
-              onlineGameBusy={isOnlinePlaying ? onlineGameBusy : false}
-              onlinePlayerVoteValue={onlinePlayerVoteValue}
-              setOnlinePlayerVoteValue={(nextValue) => {
-                setPlayerVotes((previous) => ({
-                  ...previous,
-                  [myOnlineSeatIndex]: nextValue,
-                }))
-              }}
-              onSubmitOnlinePlayerVote={submitOnlinePlayerVote}
-              onlineJudgeVoteValue={onlineJudgeVoteValue}
-              setOnlineJudgeVoteValue={setJudgeVote}
-              onSubmitOnlineJudgeVote={submitOnlineJudgeVote}
-            />
-          ) : (
-            <TurnPanel
-              actor={actor}
-              legal={legal}
-              potSummary={potSummary}
-              amountInput={amountInput}
-              setAmountInput={setAmountInput}
-              onRunAction={(type, amountOverride) => {
-                if (isOnlinePlaying && !isMyTurnOnline) {
-                  setErrorText(TURN_WAIT_ERROR)
-                  return
-                }
-
-                runAction(type, amountOverride)
-              }}
-              pulseTick={pulseTicks.turnPanel}
-            />
-          )}
-
-          {visibleErrorText ? <p className="error-text">{visibleErrorText}</p> : null}
-        </>
-      )}
-    </section>
+    <GameActionPanel
+      actor={actor}
+      amountInput={amountInput}
+      canResolveVotes={canResolveVotes}
+      contenders={contenders}
+      defaultPlayerVotes={defaultPlayerVotes}
+      effectiveJudgeVote={effectiveJudgeVote}
+      effectivePlayerVotes={effectivePlayerVotes}
+      game={game}
+      isBustedOnline={isBustedOnline}
+      isDebate={isDebate}
+      isFinalDuel={isFinalDuel}
+      isMyTurnOnline={isMyTurnOnline}
+      isNeutralVoting={isNeutralVoting}
+      isOnlineHost={isOnlineHost}
+      isOnlinePlaying={isOnlinePlaying}
+      isOnlineWaiting={isOnlineWaiting}
+      isShowdownVoting={isShowdownVoting}
+      judge={judge}
+      judgeVoteSubmitted={judgeVoteSubmitted}
+      judgeWord={judgeWord}
+      legal={legal}
+      myOnlinePlayer={myOnlinePlayer}
+      myOnlineSeatIndex={myOnlineSeatIndex}
+      onBeginNextHand={beginNextHand}
+      onResolveVotes={resolveVotes}
+      onRunAction={runAction}
+      onStartNewGame={startNewGame}
+      onSubmitOnlineJudgeVote={submitOnlineJudgeVote}
+      onSubmitOnlinePlayerVote={submitOnlinePlayerVote}
+      onTurnWait={() => setErrorText(TURN_WAIT_ERROR)}
+      onlineGameBusy={onlineGameBusy}
+      onlineJudgeVoteValue={onlineJudgeVoteValue}
+      onlinePlayerVoteValue={onlinePlayerVoteValue}
+      onlineSubmittedPlayerVoteIds={onlineSubmittedPlayerVoteIds}
+      onlineWaitingCopy={onlineWaitingCopy}
+      playerVoteVoters={playerVoteVoters}
+      potSummary={potSummary}
+      pulseTicks={pulseTicks}
+      setAmountInput={setAmountInput}
+      setJudgeVote={setJudgeVote}
+      setPlayerVotes={setPlayerVotes}
+      submittedPlayerVoteCount={submittedPlayerVoteCount}
+      visibleErrorText={visibleErrorText}
+    />
   )
 
   return (
