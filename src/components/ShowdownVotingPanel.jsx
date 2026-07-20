@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 function ShowdownVotingPanel({
   judge,
   judgeWord = null,
@@ -24,7 +26,11 @@ function ShowdownVotingPanel({
   onlineJudgeVoteValue = '',
   setOnlineJudgeVoteValue = null,
   onSubmitOnlineJudgeVote = null,
+  isOnlineHost = false,
+  onRefreshOnlineVotes = null,
+  onRestartOnlineGame = null,
 }) {
+  const [restartGameArmed, setRestartGameArmed] = useState(false)
   const displayJudgeWord = judge?.holeWord ?? judgeWord
   const myPlayerVoteVoter = playerVoteVoters.find((player) => player.id === myPlayerId) ?? null
   const myIsContender = contenders.some((player) => player.id === myPlayerId)
@@ -152,6 +158,44 @@ function ShowdownVotingPanel({
         >
           {canResolveVotes ? 'Show Final Results' : 'Waiting for Votes'}
         </button>
+
+        {isOnlineHost ? (
+          <div className="showdown-recovery">
+            <h4>Host Recovery</h4>
+            <p>
+              Refresh the recorded vote status first. Restarting abandons this
+              round and resets the table if the status cannot recover.
+            </p>
+            <div className="action-row">
+              <button
+                type="button"
+                disabled={onlineGameBusy || !onRefreshOnlineVotes}
+                onClick={onRefreshOnlineVotes}
+              >
+                Refresh Vote Status
+              </button>
+              <button
+                type="button"
+                disabled={onlineGameBusy || !onRestartOnlineGame}
+                onClick={() => {
+                  if (restartGameArmed) {
+                    onRestartOnlineGame?.()
+                    return
+                  }
+
+                  setRestartGameArmed(true)
+                }}
+              >
+                {restartGameArmed ? 'Confirm Restart Game' : 'Restart Game'}
+              </button>
+              {restartGameArmed ? (
+                <button type="button" onClick={() => setRestartGameArmed(false)}>
+                  Keep Waiting
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
     )
   }

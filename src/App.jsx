@@ -27,6 +27,13 @@ import {
 } from './multiplayer/privateGameState'
 import { useGameActions } from './game/useGameActions'
 import { useOnlineGameState } from './game/useOnlineGameState'
+import {
+  buildDefaultPlayerVotes,
+  canResolveShowdownVotes,
+  countSubmittedPlayerVotes,
+  getEffectiveJudgeVote,
+  getEffectivePlayerVotes,
+} from './game/showdownVoting'
 
 const PLAYER_NAMES = ['North', 'East', 'South', 'West']
 const STARTING_STACK = 400
@@ -85,6 +92,7 @@ function App() {
     onlineGameBusy,
     onlineSession,
     onlineWaitingCopy,
+    refreshOnlineVoteStatuses,
     roomId,
     setOnlineGameBusy,
     setOnlinePrivateDataKey,
@@ -127,69 +135,46 @@ function App() {
   }, [activeOnlineVoteStatusRows])
 
   const defaultPlayerVotes = useMemo(() => {
-    if (!isShowdownVoting || contenders.length === 0) {
-      return {}
-    }
-
-    const defaults = {}
-
-    for (const voter of playerVoteVoters) {
-      const fallback = contenders.find((candidate) => candidate.id !== voter.id) ?? contenders[0]
-      defaults[voter.id] = String(fallback.id)
-    }
-
-    return defaults
+    return buildDefaultPlayerVotes({
+      isShowdownVoting,
+      contenders,
+      playerVoteVoters,
+    })
   }, [contenders, isShowdownVoting, playerVoteVoters])
 
-  const effectivePlayerVotes =
-    isOnlinePlaying
-      ? {}
-      : Object.keys(playerVotes).length > 0
-        ? playerVotes
-        : defaultPlayerVotes
-  const effectiveJudgeVote =
-    judge
-      ? isOnlinePlaying
-        ? ''
-        : judgeVote || (contenders.length > 0 ? String(contenders[0].id) : '')
-      : ''
-  const submittedPlayerVoteCount = isOnlinePlaying
-    ? playerVoteVoters.filter((voter) => onlineSubmittedPlayerVoteIds.includes(voter.id))
-        .length
-    : playerVoteVoters.filter((voter) => {
-        const value = effectivePlayerVotes[voter.id]
-        const targetId = Number(value)
-
-        return (
-          value !== undefined &&
-          value !== '' &&
-          (!contenders.some((contender) => contender.id === voter.id) ||
-            targetId !== voter.id) &&
-          contenders.some((target) => target.id === targetId)
-        )
-      }).length
+  const effectivePlayerVotes = getEffectivePlayerVotes({
+    isOnlinePlaying,
+    playerVotes,
+    defaultPlayerVotes,
+  })
+  const effectiveJudgeVote = getEffectiveJudgeVote({
+    judge,
+    isOnlinePlaying,
+    judgeVote,
+    contenders,
+  })
+  const submittedPlayerVoteCount = countSubmittedPlayerVotes({
+    isOnlinePlaying,
+    playerVoteVoters,
+    onlineSubmittedPlayerVoteIds,
+    effectivePlayerVotes,
+    contenders,
+  })
   const judgeVoteSubmitted = isOnlinePlaying
     ? !judge || hasSubmittedJudgeVote(activeOnlineVoteStatusRows)
     : !judge || effectiveJudgeVote !== ''
 
-  const canResolveVotes =
-    isShowdownVoting &&
-    contenders.length > 1 &&
-    (isOnlinePlaying
-      ? submittedPlayerVoteCount === playerVoteVoters.length && judgeVoteSubmitted
-      : playerVoteVoters.every((voter) => {
-          const value = effectivePlayerVotes[voter.id]
-          const targetId = Number(value)
-
-          return (
-            value !== undefined &&
-            value !== '' &&
-            (!contenders.some((contender) => contender.id === voter.id) ||
-              targetId !== voter.id) &&
-            contenders.some((target) => target.id === targetId)
-          )
-        }) &&
-        (!judge || effectiveJudgeVote !== ''))
+  const canResolveVotes = canResolveShowdownVotes({
+    isShowdownVoting,
+    contenders,
+    isOnlinePlaying,
+    submittedPlayerVoteCount,
+    playerVoteVoters,
+    judgeVoteSubmitted,
+    effectivePlayerVotes,
+    judge,
+    effectiveJudgeVote,
+  })
 
   useEffect(() => {
     const previousPhase = previousPhaseRef.current
@@ -449,6 +434,7 @@ function App() {
       myOnlineSeatIndex={myOnlineSeatIndex}
       onBeginNextHand={beginNextHand}
       onResolveVotes={resolveVotes}
+      onRefreshOnlineVotes={refreshOnlineVoteStatuses}
       onRunAction={runAction}
       onStartNewGame={startNewGame}
       onSubmitOnlineJudgeVote={submitOnlineJudgeVote}

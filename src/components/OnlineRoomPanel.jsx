@@ -13,9 +13,15 @@ import {
   setReady,
   subscribeToRoom,
 } from '../multiplayer/roomApi'
+import {
+  getReconnectRoomCode,
+  getRoomExitButtonLabel,
+  getRoomExitMode,
+} from '../multiplayer/roomExit'
 
 const MAX_ROOM_PLAYERS = 8
 const DISPLAY_NAME_STORAGE_KEY = 'similer.displayName'
+const ROOM_CODE_STORAGE_KEY = 'similer.roomCode'
 const MISSING_DISPLAY_NAME_ERROR = 'Enter your name to start.'
 
 function readRememberedDisplayName() {
@@ -42,6 +48,36 @@ function rememberDisplayName(displayName) {
   }
 }
 
+function readRememberedRoomCode() {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  try {
+    return normalizeRoomCode(window.localStorage.getItem(ROOM_CODE_STORAGE_KEY))
+  } catch {
+    return ''
+  }
+}
+
+function rememberRoomCode(roomCode) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    const normalizedCode = normalizeRoomCode(roomCode)
+
+    if (normalizedCode) {
+      window.localStorage.setItem(ROOM_CODE_STORAGE_KEY, normalizedCode)
+    } else {
+      window.localStorage.removeItem(ROOM_CODE_STORAGE_KEY)
+    }
+  } catch {
+    // Reconnect remains available by manually entering the room code.
+  }
+}
+
 function OnlineRoomPanel({
   onSessionChange = null,
   onStartOnlineGame = null,
@@ -58,7 +94,9 @@ function OnlineRoomPanel({
 
     return sanitizeDisplayNameInput(sessionDisplayName) || readRememberedDisplayName()
   })
-  const [roomCodeInput, setRoomCodeInput] = useState('')
+  const [roomCodeInput, setRoomCodeInput] = useState(() => {
+    return normalizeRoomCode(initialSession?.room?.code) || readRememberedRoomCode()
+  })
   const [room, setRoom] = useState(() => initialSession?.room ?? null)
   const [roomState, setRoomState] = useState(() => initialSession?.roomState ?? null)
   const [players, setPlayers] = useState(() => initialSession?.players ?? [])
@@ -126,6 +164,7 @@ function OnlineRoomPanel({
           setRoom(null)
           setPlayers([])
           setRoomState(null)
+          rememberRoomCode('')
           return
         }
 
@@ -254,6 +293,7 @@ function OnlineRoomPanel({
       setRoomState(nextRoomState)
       setDisplayName(trimmedName)
       rememberDisplayName(trimmedName)
+      rememberRoomCode(nextRoom?.code)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Room creation failed.')
     } finally {
@@ -285,6 +325,7 @@ function OnlineRoomPanel({
       setRoomState(nextRoomState)
       setDisplayName(trimmedName)
       rememberDisplayName(trimmedName)
+      rememberRoomCode(nextRoom?.code)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Join failed.')
     } finally {
@@ -322,11 +363,18 @@ function OnlineRoomPanel({
     setErrorText('')
 
     try {
-      await leaveRoom({ roomId: room.id })
+      const exitMode = getRoomExitMode(room)
+      const reconnectCode = getReconnectRoomCode(room)
+
+      if (exitMode === 'leave') {
+        await leaveRoom({ roomId: room.id })
+      }
+
       setRoom(null)
       setRoomState(null)
       setPlayers([])
-      setRoomCodeInput('')
+      setRoomCodeInput(reconnectCode)
+      rememberRoomCode(reconnectCode)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Leave room failed.')
     } finally {
@@ -414,8 +462,13 @@ function OnlineRoomPanel({
         ) : null}
 
         {room ? (
-          <button type="button" disabled={busy} onClick={handleLeaveRoom}>
-            Leave
+          <button
+            type="button"
+            disabled={busy}
+            onClick={handleLeaveRoom}
+            title={isRoomPlaying ? 'Disconnect and keep your seat available for rejoining.' : undefined}
+          >
+            {getRoomExitButtonLabel(room)}
           </button>
         ) : null}
 
@@ -533,9 +586,15 @@ function OnlineRoomPanel({
               Refresh Room
             </button>
             <button type="button" disabled={busy} onClick={handleLeaveRoom}>
-              Leave Room
+              {getRoomExitButtonLabel(room)} Room
             </button>
           </div>
+          {isRoomPlaying ? (
+            <p className="online-room-copy">
+              Disconnect keeps your seat. Rejoin this active game with the same
+              room code and browser profile.
+            </p>
+          ) : null}
           {!isRoomPlaying && room.host_user_id === userId && players.length < 3 ? (
             <p className="online-room-copy">
               Need at least 3 players to start this game mode.

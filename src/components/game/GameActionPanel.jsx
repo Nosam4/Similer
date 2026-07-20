@@ -29,6 +29,7 @@ function GameActionPanel({
   myOnlinePlayer,
   myOnlineSeatIndex,
   onBeginNextHand,
+  onRefreshOnlineVotes,
   onResolveVotes,
   onRunAction,
   onStartNewGame,
@@ -100,6 +101,9 @@ function GameActionPanel({
               setJudgeVote={setJudgeVote}
               canResolveVotes={canResolveVotes}
               onResolveVotes={onResolveVotes}
+              isOnlineHost={isOnlineHost}
+              onRefreshOnlineVotes={onRefreshOnlineVotes}
+              onRestartOnlineGame={onStartNewGame}
               pulseTick={pulseTicks.showdownPanel}
               isOnlinePlaying={isOnlinePlaying}
               myPlayerId={isOnlinePlaying ? myOnlineSeatIndex : null}

@@ -120,6 +120,26 @@ export function useOnlineGameState({ setErrorText }) {
   const handlePrivateDataChange = useCallback(() => {
     setOnlinePrivateRefreshTick((previous) => previous + 1)
   }, [])
+  const refreshOnlineVoteStatuses = useCallback(async () => {
+    if (!roomId || !onlineGame?.handNumber || onlineGame.phase !== 'showdownVoting') {
+      return
+    }
+
+    try {
+      setOnlineGameBusy(true)
+      const voteRows = await fetchShowdownVoteStatuses({
+        roomId,
+        handNumber: onlineGame.handNumber,
+      })
+      setOnlineVoteStatusRows(voteRows)
+      setOnlinePrivateDataKey(`${roomId}:${onlineGame.handNumber}`)
+      setErrorText('')
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : 'Unable to refresh vote status.')
+    } finally {
+      setOnlineGameBusy(false)
+    }
+  }, [onlineGame, roomId, setErrorText])
 
   return {
     activeOnlineVoteStatusRows,
@@ -135,6 +155,7 @@ export function useOnlineGameState({ setErrorText }) {
     onlineGameBusy,
     onlineSession,
     onlineWaitingCopy,
+    refreshOnlineVoteStatuses,
     roomId,
     roomStateVersion,
     setOnlineGameBusy,

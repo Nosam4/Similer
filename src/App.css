@@ -1559,6 +1559,18 @@ button.tiny {
   color: #3b3327;
 }
 
+.showdown-recovery {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(247, 228, 177, 0.28);
+}
+
+.showdown-recovery h4,
+.showdown-recovery p {
+  margin: 0;
+}
+
 .error-text {
   color: #9b231e;
   font-weight: 600;
