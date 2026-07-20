@@ -30,6 +30,16 @@ export function normalizeDisplayName(input) {
   return sanitizeDisplayNameInput(input) || DEFAULT_DISPLAY_NAME
 }
 
+function requireDisplayName(input) {
+  const displayName = sanitizeDisplayNameInput(input)
+
+  if (!displayName) {
+    throw new Error('Enter your name to start.')
+  }
+
+  return displayName
+}
+
 export async function ensureAnonymousSession() {
   const client = getSupabaseClient()
   const existing = await client.auth.getSession()
@@ -63,8 +73,8 @@ function unwrapSingleRow(data) {
 }
 
 export async function createRoom({ displayName, maxPlayers = 8 }) {
+  const safeDisplayName = requireDisplayName(displayName)
   const client = getSupabaseClient()
-  const safeDisplayName = normalizeDisplayName(displayName)
   const payload = {
     p_display_name: safeDisplayName,
     p_max_players: maxPlayers,
@@ -91,9 +101,9 @@ export async function createRoom({ displayName, maxPlayers = 8 }) {
 }
 
 export async function joinRoomByCode({ code, displayName }) {
-  const client = getSupabaseClient()
   const normalizedCode = normalizeRoomCode(code)
-  const safeDisplayName = normalizeDisplayName(displayName)
+  const safeDisplayName = requireDisplayName(displayName)
+  const client = getSupabaseClient()
 
   if (normalizedCode.length !== 6) {
     throw new Error('Room code must be 6 characters.')

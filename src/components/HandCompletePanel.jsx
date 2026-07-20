@@ -126,10 +126,10 @@ function HandCompletePanel({
         disabled={actionDisabled}
         onClick={game.tableComplete ? onStartNewGame : onBeginNextHand}
       >
-        {game.tableComplete ? 'Start New Game' : 'Start Next Hand'}
+        {game.tableComplete ? 'Start New Game' : 'Start Next Round'}
       </button>
 
-      <h3>Hand Complete</h3>
+      <h3>Round Complete</h3>
       {tableWinner ? (
         <p key={`table-winner-line-${winnerPulseTick}`} className={winnerLineClassName}>
           Table Winner: {tableWinner.name} wins the game with {tableWinner.stack} chips.

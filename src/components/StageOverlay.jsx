@@ -3,6 +3,7 @@ import { useState } from 'react'
 function StageOverlay({
   activeKey,
   title,
+  judgeName,
   judgeWord,
   kicker = 'New Phase',
   wordLabel = 'Judge word',
@@ -47,7 +48,7 @@ function StageOverlay({
       role="dialog"
       aria-modal="true"
       aria-live="polite"
-      aria-label={`${title}. ${wordLabel}: ${judgeWord ?? 'pending'}. ${message}`}
+      aria-label={`${title}. Judge: ${judgeName ?? 'pending'}. ${wordLabel}: ${judgeWord ?? 'pending'}. ${message}`}
     >
       <div className="stage-overlay-card">
         <div className="stage-overlay-heading">
@@ -59,9 +60,16 @@ function StageOverlay({
           ) : null}
         </div>
         <h2>{title}</h2>
-        <p>
-          {wordLabel}: <b>{judgeWord ?? 'revealed word'}</b>
-        </p>
+        <div className="stage-overlay-judge-details">
+          <p>
+            <span>Judge</span>
+            <b>{judgeName ?? 'Pending'}</b>
+          </p>
+          <p>
+            <span>{wordLabel}</span>
+            <b>{judgeWord ?? 'Revealed word'}</b>
+          </p>
+        </div>
         <p>{message}</p>
         {canShowOwnWord ? (
           <div className="stage-overlay-own-word">

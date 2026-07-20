@@ -223,8 +223,8 @@ function PokerTable({
 
   return (
     <section className="poker-table-shell" aria-label="Similer table">
-      <div className="poker-table-meta" aria-label="Hand summary">
-        <span>Hand {handNumber}</span>
+      <div className="poker-table-meta" aria-label="Round summary">
+        <span>Round #{handNumber}</span>
         <span
           key={`poker-phase-${phasePulseTick}`}
           className={phasePulseTick > 0 ? 'stage-pulse stage-pulse-strong' : ''}

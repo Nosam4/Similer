@@ -991,6 +991,37 @@
   color: #f7e4b1;
 }
 
+.stage-overlay-judge-details {
+  width: min(520px, 100%);
+  margin: 0 auto 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.stage-overlay-judge-details p {
+  margin: 0;
+  border: 1px solid rgba(247, 228, 177, 0.3);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 4px;
+  background: rgba(3, 16, 12, 0.32);
+}
+
+.stage-overlay-judge-details span {
+  color: rgba(255, 248, 223, 0.7);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.stage-overlay-judge-details b {
+  overflow-wrap: anywhere;
+  font-size: clamp(1.15rem, 3vw, 1.5rem);
+}
+
 .stage-overlay-own-word {
   width: min(360px, 100%);
   margin: 16px auto 0;
@@ -1136,6 +1167,12 @@
   color: #ffd6cf;
   background: rgba(90, 18, 15, 0.3);
   font-size: 0.86rem;
+}
+
+@media (max-width: 480px) {
+  .stage-overlay-judge-details {
+    grid-template-columns: 1fr;
+  }
 }
 
 .busted-panel {

@@ -147,7 +147,7 @@ export function useGameActions({
       setErrorText('')
       resetHandInputs()
     } catch (error) {
-      setErrorText(error instanceof Error ? error.message : 'Could not start next hand.')
+      setErrorText(error instanceof Error ? error.message : 'Could not start next round.')
     } finally {
       setOnlineGameBusy(false)
     }

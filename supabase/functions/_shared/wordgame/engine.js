@@ -5,7 +5,7 @@ const PHASE_LABELS = {
   postflop: 'Opening Statements',
   debate: 'Closing Arguments',
   showdownVoting: 'Showdown Voting',
-  handComplete: 'Hand Complete',
+  handComplete: 'Round Complete',
 }
 
 const CATEGORY_LABELS = {
@@ -421,7 +421,7 @@ function formatPotAwardRule(pot) {
 }
 
 function addLog(state, message) {
-  state.log.push(`[Hand ${state.handNumber}] ${message}`)
+  state.log.push(`[Round ${state.handNumber}] ${message}`)
 
   if (state.log.length > 250) {
     state.log = state.log.slice(state.log.length - 250)
@@ -795,7 +795,7 @@ function settleUncontestedPot(state) {
   if (judge && judgeStakeRefund > 0) {
     addLog(
       state,
-      `${judge.name} receives stake refund ${judgeStakeRefund}; no Judge Tax is awarded because the hand ended uncontested.`,
+      `${judge.name} receives stake refund ${judgeStakeRefund}; no Judge Tax is awarded because the round ended uncontested.`,
     )
   }
   addLog(state, `${winner.name} wins ${potAmount} chips uncontested.`)
@@ -951,7 +951,7 @@ function resolveSimilarityDuel(state) {
     `Winner logic -> Final Duel uses the neutral judge word "${state.judgeWord}". ${winner.name} is closest by similarity.`,
   )
   logSidePotAwards(state, settlement)
-  addLog(state, `${winner.name} wins the hand for ${potAmount}.`)
+  addLog(state, `${winner.name} wins the round for ${potAmount}.`)
 
   state.handComplete = true
   state.phase = 'handComplete'
@@ -1085,7 +1085,7 @@ function startPostflopJudgePhase(state) {
   const judgeIndex = chooseJudgeIndex(state)
 
   if (judgeIndex === null) {
-    throw new Error('Unable to choose a judge for this hand.')
+    throw new Error('Unable to choose a judge for this round.')
   }
 
   return startPlayerJudgePhase(state, judgeIndex)
@@ -1106,7 +1106,7 @@ function startPlayerJudgePhase(state, judgeIndex, reason = null) {
 
   addLog(
     state,
-    `${judge.name} becomes the judge. Judge word: "${state.judgeWord}". Active judges receive a stake refund when the hand ends; correct active judges can earn 20% Judge Tax from covered pot layers, while correct folded judges can earn 10% without a stake refund. Judges cannot tax side pots above their committed stake.`,
+    `${judge.name} becomes the judge. Judge word: "${state.judgeWord}". Active judges receive a stake refund when the round ends; correct active judges can earn 20% Judge Tax from covered pot layers, while correct folded judges can earn 10% without a stake refund. Judges cannot tax side pots above their committed stake.`,
   )
   if (reason) {
     addLog(state, reason)
@@ -1200,7 +1200,7 @@ function markShortRaise(state, actorIndex) {
 
 function ensureCanAct(state) {
   if (state.handComplete || state.tableComplete) {
-    throw new Error('The current hand is already complete.')
+    throw new Error('The current round is already complete.')
   }
 
   if (state.currentPlayerIndex === null) {
@@ -1984,7 +1984,7 @@ function resolveNeutralVoting(previousState, playerVotes) {
   )
   addLog(state, `Winner logic -> ${buildNeutralVotingExplanation(resolution, winner)}`)
   logSidePotAwards(state, settlement)
-  addLog(state, `${winner.name} wins the hand for ${winnerPayout}.`)
+  addLog(state, `${winner.name} wins the round for ${winnerPayout}.`)
 
   state.handComplete = true
   state.phase = 'handComplete'
@@ -2099,7 +2099,7 @@ export function resolveShowdownVotes(previousState, payload) {
   addLog(state, `Winner logic -> ${buildWinnerExplanation(resolution, winner)}`)
 
   logSidePotAwards(state, settlement)
-  addLog(state, `${winner.name} wins the hand for ${winnerPayout}.`)
+  addLog(state, `${winner.name} wins the round for ${winnerPayout}.`)
 
   if (judgeAligned) {
     if (judgeWasFolded) {

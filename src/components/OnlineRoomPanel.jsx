@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { isSupabaseConfigured } from '../lib/supabaseClient'
 import {
   createRoom,
@@ -8,15 +8,39 @@ import {
   fetchRoomState,
   joinRoomByCode,
   leaveRoom,
-  normalizeDisplayName,
   normalizeRoomCode,
   sanitizeDisplayNameInput,
   setReady,
   subscribeToRoom,
 } from '../multiplayer/roomApi'
 
-const DEFAULT_DISPLAY_NAME = 'Player'
 const MAX_ROOM_PLAYERS = 8
+const DISPLAY_NAME_STORAGE_KEY = 'similer.displayName'
+const MISSING_DISPLAY_NAME_ERROR = 'Enter your name to start.'
+
+function readRememberedDisplayName() {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  try {
+    return sanitizeDisplayNameInput(window.localStorage.getItem(DISPLAY_NAME_STORAGE_KEY))
+  } catch {
+    return ''
+  }
+}
+
+function rememberDisplayName(displayName) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(DISPLAY_NAME_STORAGE_KEY, displayName)
+  } catch {
+    // A blocked storage API should not prevent room creation or joining.
+  }
+}
 
 function OnlineRoomPanel({
   onSessionChange = null,
@@ -27,7 +51,13 @@ function OnlineRoomPanel({
   initialSession = null,
 }) {
   const [userId, setUserId] = useState(() => initialSession?.userId ?? '')
-  const [displayName, setDisplayName] = useState('')
+  const [displayName, setDisplayName] = useState(() => {
+    const sessionDisplayName = initialSession?.players?.find((player) => {
+      return player.user_id === initialSession?.userId
+    })?.display_name
+
+    return sanitizeDisplayNameInput(sessionDisplayName) || readRememberedDisplayName()
+  })
   const [roomCodeInput, setRoomCodeInput] = useState('')
   const [room, setRoom] = useState(() => initialSession?.room ?? null)
   const [roomState, setRoomState] = useState(() => initialSession?.roomState ?? null)
@@ -36,6 +66,7 @@ function OnlineRoomPanel({
   const [errorText, setErrorText] = useState('')
   const [booting, setBooting] = useState(isSupabaseConfigured && !initialSession?.userId)
   const [refreshTick, setRefreshTick] = useState(0)
+  const displayNameInputRef = useRef(null)
 
   useEffect(() => {
     if (!isSupabaseConfigured || userId) {
@@ -178,8 +209,33 @@ function OnlineRoomPanel({
   const isRoomPlaying = room?.status === 'playing'
   const roomSeatCount = `${players.length}/${room?.max_players ?? MAX_ROOM_PLAYERS}`
 
+  function getRequiredDisplayName() {
+    const trimmedName = sanitizeDisplayNameInput(displayName)
+
+    if (!trimmedName) {
+      setErrorText(MISSING_DISPLAY_NAME_ERROR)
+      displayNameInputRef.current?.focus()
+      return null
+    }
+
+    return trimmedName
+  }
+
+  function handleDisplayNameChange(event) {
+    const nextDisplayName = sanitizeDisplayNameInput(event.target.value)
+    setDisplayName(nextDisplayName)
+
+    if (nextDisplayName && errorText === MISSING_DISPLAY_NAME_ERROR) {
+      setErrorText('')
+    }
+  }
+
   async function handleCreateRoom() {
-    const trimmedName = normalizeDisplayName(displayName)
+    const trimmedName = getRequiredDisplayName()
+    if (!trimmedName) {
+      return
+    }
+
     setBusy(true)
     setErrorText('')
 
@@ -197,6 +253,7 @@ function OnlineRoomPanel({
       setPlayers(nextPlayers)
       setRoomState(nextRoomState)
       setDisplayName(trimmedName)
+      rememberDisplayName(trimmedName)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Room creation failed.')
     } finally {
@@ -205,7 +262,11 @@ function OnlineRoomPanel({
   }
 
   async function handleJoinRoom() {
-    const trimmedName = normalizeDisplayName(displayName)
+    const trimmedName = getRequiredDisplayName()
+    if (!trimmedName) {
+      return
+    }
+
     setBusy(true)
     setErrorText('')
 
@@ -223,6 +284,7 @@ function OnlineRoomPanel({
       setPlayers(nextPlayers)
       setRoomState(nextRoomState)
       setDisplayName(trimmedName)
+      rememberDisplayName(trimmedName)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Join failed.')
     } finally {
@@ -276,18 +338,18 @@ function OnlineRoomPanel({
     return (
       <section className="online-room-panel online-room-panel--header" aria-label="Online room setup">
         <label className="online-room-header-field">
-          <span>Display Name</span>
+          <span>Your Name</span>
           <input
+            ref={displayNameInputRef}
             type="text"
             value={displayName}
-            onChange={(event) => setDisplayName(sanitizeDisplayNameInput(event.target.value))}
-            onFocus={() => {
-              if (displayName === DEFAULT_DISPLAY_NAME) {
-                setDisplayName('')
-              }
-            }}
+            onChange={handleDisplayNameChange}
             maxLength={8}
-            placeholder={DEFAULT_DISPLAY_NAME}
+            placeholder="Enter your name"
+            autoComplete="nickname"
+            required
+            aria-invalid={errorText === MISSING_DISPLAY_NAME_ERROR}
+            aria-describedby={errorText ? 'online-room-error' : undefined}
             disabled={!isSupabaseConfigured || booting || busy || Boolean(room)}
           />
         </label>
@@ -357,7 +419,11 @@ function OnlineRoomPanel({
           </button>
         ) : null}
 
-        {errorText ? <span className="online-room-header-error">{errorText}</span> : null}
+        {errorText ? (
+          <span id="online-room-error" className="online-room-header-error" role="alert">
+            {errorText}
+          </span>
+        ) : null}
         {!isSupabaseConfigured ? (
           <span className="online-room-header-error">Supabase env missing</span>
         ) : null}
@@ -386,18 +452,18 @@ function OnlineRoomPanel({
       {!isRoomPlaying ? (
         <div className="online-room-controls">
           <label>
-            Display Name
+            Your Name
             <input
+              ref={displayNameInputRef}
               type="text"
               value={displayName}
-              onChange={(event) => setDisplayName(sanitizeDisplayNameInput(event.target.value))}
-              onFocus={() => {
-                if (displayName === DEFAULT_DISPLAY_NAME) {
-                  setDisplayName('')
-                }
-              }}
+              onChange={handleDisplayNameChange}
               maxLength={8}
-              placeholder={DEFAULT_DISPLAY_NAME}
+              placeholder="Enter your name"
+              autoComplete="nickname"
+              required
+              aria-invalid={errorText === MISSING_DISPLAY_NAME_ERROR}
+              aria-describedby={errorText ? 'online-room-error' : undefined}
               disabled={booting || busy}
             />
           </label>
@@ -504,7 +570,11 @@ function OnlineRoomPanel({
         </div>
       )}
 
-      {errorText ? <p className="error-text">{errorText}</p> : null}
+      {errorText ? (
+        <p id="online-room-error" className="error-text" role="alert">
+          {errorText}
+        </p>
+      ) : null}
     </section>
   )
 }

@@ -120,8 +120,8 @@ function ShowdownVotingPanel({
             <p>Waiting for {judge?.name} to submit the judge vote.</p>
           ) : (
             <p>
-              No judge vote this hand. A clear Player Vote majority can win the
-              hand.
+              No judge vote this round. A clear Player Vote majority can win the
+              round.
             </p>
           )}
         </div>
@@ -150,7 +150,7 @@ function ShowdownVotingPanel({
           disabled={!canResolveVotes || onlineGameBusy}
           onClick={onResolveVotes}
         >
-          {canResolveVotes ? 'Resolve Showdown' : 'Waiting for Votes'}
+          {canResolveVotes ? 'Show Final Results' : 'Waiting for Votes'}
         </button>
       </div>
     )
@@ -215,12 +215,12 @@ function ShowdownVotingPanel({
             </select>
           </label>
         ) : (
-          <p>No judge vote this hand.</p>
+          <p>No judge vote this round.</p>
         )}
       </div>
 
       <button type="button" disabled={!canResolveVotes} onClick={onResolveVotes}>
-        Resolve Showdown
+        Show Final Results
       </button>
     </div>
   )

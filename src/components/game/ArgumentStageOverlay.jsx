@@ -59,10 +59,11 @@ function ArgumentStageOverlay({
     ? {
         activeKey: `opening-arguments-${game.handNumber}`,
         kicker: 'Judge Word Live',
-        title: 'OPENING ARGUMENTS',
-        wordLabel: judge ? `${judge.name} reveals` : 'Judge word',
+        title: 'OPENING STATEMENTS',
+        judgeName: judge?.name ?? 'Neutral Judge',
+        wordLabel: "Judge's Word",
         message:
-          'Make your opening argument, then mark argued. Betting resumes after every active player is marked.',
+          "State your word, then argue why it connects to the Judge's Word. Creative reasoning—and bluffing—are fair game. Mark argued when you finish; betting resumes after every active player is marked.",
         speakers: openingArgumentSpeakers,
         phaseKey: 'opening',
         markPlayerId: openingArgumentMarkPlayerId,
@@ -72,10 +73,11 @@ function ArgumentStageOverlay({
           activeKey: `closing-arguments-${game.handNumber}`,
           kicker: 'Words Revealed',
           title: 'CLOSING ARGUMENTS',
-          wordLabel: judge ? `${judge.name}'s judge word` : 'Neutral judge word',
+          judgeName: judge?.name ?? 'Neutral Judge',
+          wordLabel: judge ? "Judge's Word" : "Neutral Judge's Word",
           judgeWord,
           message:
-            'Argue the revealed words. Voting begins after every contender is marked.',
+            'Make your final case to the Judge. Build on your opening argument, change your approach, or explain a bluff—whatever gives your real word the best chance to win. Mark argued when you finish; voting begins after every contender is marked.',
           speakers: closingArgumentSpeakers,
           phaseKey: 'closing',
           markPlayerId: closingArgumentMarkPlayerId,
@@ -88,6 +90,7 @@ function ArgumentStageOverlay({
       activeKey={stageOverlayConfig?.activeKey ?? ''}
       kicker={stageOverlayConfig?.kicker}
       title={stageOverlayConfig?.title}
+      judgeName={stageOverlayConfig?.judgeName}
       judgeWord={judgeWord}
       wordLabel={stageOverlayConfig?.wordLabel}
       message={stageOverlayConfig?.message}

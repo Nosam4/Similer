@@ -6,8 +6,6 @@ function DebatePanel({
   isNeutralVoting = false,
   pulseTick = 0,
 }) {
-  const judgeLabel = judge ? `${judge.name}'s word` : 'Neutral judge word'
-
   return (
     <div
       key={`debate-panel-${pulseTick}`}
@@ -15,7 +13,16 @@ function DebatePanel({
     >
       <h3>Closing Arguments</h3>
       <p>
-        {judgeLabel} is <b>{judgeWord}</b>. Player words are now revealed.
+        {judge ? (
+          <>
+            Judge: <b>{judge.name}</b>. Judge's Word: <b>{judgeWord}</b>.
+          </>
+        ) : (
+          <>
+            Neutral Judge's Word: <b>{judgeWord}</b>.
+          </>
+        )}{' '}
+        Player words are now revealed.
       </p>
       {isFinalDuel ? (
         <p>
@@ -30,8 +37,9 @@ function DebatePanel({
         </p>
       ) : (
         <p>
-          Each contender should argue their assigned word now. No decoys, no
-          fake words, just the best case for the real connection.
+          Make your final case to the Judge. Build on your opening argument,
+          change your approach, or explain a bluff—whatever gives your real word
+          the best chance to win.
         </p>
       )}
 
