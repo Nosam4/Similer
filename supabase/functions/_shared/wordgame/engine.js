@@ -1,4 +1,6 @@
 import matrixData from './matrix.json' with { type: 'json' }
+import { getServerSimilarityScore } from './serverSimilarityScores.js'
+import { getServerNeutralJudgeWord } from './serverWordDeal.js'
 
 const PHASE_LABELS = {
   preflop: 'Preflop',
@@ -187,6 +189,11 @@ function getSimilarityScoreForPlayerId(state, playerId) {
     return Number.NEGATIVE_INFINITY
   }
 
+  const serverScore = getServerSimilarityScore(state, playerId)
+  if (serverScore !== null) {
+    return serverScore
+  }
+
   return getSimilarityScore(player.holeWord, state.judgeWord)
 }
 
@@ -218,7 +225,7 @@ function buildAllSimilarityScores(state) {
         playerId: player.id,
         playerName: player.name,
         word: player.holeWord,
-        similarity: getSimilarityScore(player.holeWord, state.judgeWord),
+        similarity: getSimilarityScoreForPlayerId(state, player.id),
         status: getSimilarityScoreStatus(player),
         eligible: isContender(player),
         folded: player.folded,
@@ -658,7 +665,12 @@ function formatLogScore(score) {
   return Number.isFinite(score) ? score.toFixed(2) : '--'
 }
 
-function drawNeutralJudgeWord(state, rng = Math.random) {
+export function drawNeutralJudgeWord(state, rng = Math.random) {
+  const reservedWord = getServerNeutralJudgeWord(state)
+  if (reservedWord) {
+    return reservedWord
+  }
+
   const usedWords = new Set(
     state.players.map((player) => player.holeWord).filter((word) => word),
   )
@@ -892,7 +904,7 @@ function resolveSimilarityDuel(state) {
   for (const contender of contenders) {
     similarityByPlayerId.set(
       contender.id,
-      getSimilarityScore(contender.holeWord, state.judgeWord),
+      getSimilarityScoreForPlayerId(state, contender.id),
     )
   }
 
@@ -1550,7 +1562,7 @@ function buildVotingResolution(state, playerVotes, judgeVote) {
   for (const contender of contenders) {
     similarityByPlayerId.set(
       contender.id,
-      getSimilarityScore(contender.holeWord, state.judgeWord),
+      getSimilarityScoreForPlayerId(state, contender.id),
     )
   }
 
@@ -1665,7 +1677,7 @@ function buildNeutralVotingResolution(state, playerVotes) {
   for (const contender of contenders) {
     similarityByPlayerId.set(
       contender.id,
-      getSimilarityScore(contender.holeWord, state.judgeWord),
+      getSimilarityScoreForPlayerId(state, contender.id),
     )
   }
 

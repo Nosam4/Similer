@@ -186,12 +186,18 @@ export async function fetchRoomState(roomId) {
   return response.data
 }
 
-export async function invokeGameCommand({ roomId, command, payload = {} }) {
+export async function invokeGameCommand({
+  roomId,
+  command,
+  payload = {},
+  commandId = globalThis.crypto.randomUUID(),
+}) {
   const client = getSupabaseClient()
   const response = await client.functions.invoke('game-action', {
     body: {
       roomId,
       command,
+      commandId,
       payload,
     },
   })
@@ -292,9 +298,21 @@ export async function fetchShowdownVoteStatuses({ roomId, handNumber }) {
   return response.data ?? []
 }
 
-export function subscribeToRoom({ roomId, onAnyChange, onPrivateChange = null }) {
+export function subscribeToRoom({
+  roomId,
+  onAnyChange = null,
+  onRoomChange = null,
+  onPlayerChange = null,
+  onRoomStateChange = null,
+  onPrivateChange = null,
+  onStatusChange = null,
+}) {
   const client = getSupabaseClient()
-  const handlePrivateChange = onPrivateChange ?? onAnyChange
+  const ignoreChange = () => {}
+  const handleRoomChange = onRoomChange ?? onAnyChange ?? ignoreChange
+  const handlePlayerChange = onPlayerChange ?? onAnyChange ?? ignoreChange
+  const handleRoomStateChange = onRoomStateChange ?? onAnyChange ?? ignoreChange
+  const handlePrivateChange = onPrivateChange ?? onAnyChange ?? ignoreChange
   const channel = client
     .channel(`room-${roomId}`)
     .on(
@@ -305,7 +323,7 @@ export function subscribeToRoom({ roomId, onAnyChange, onPrivateChange = null })
         table: 'rooms',
         filter: `id=eq.${roomId}`,
       },
-      onAnyChange,
+      handleRoomChange,
     )
     .on(
       'postgres_changes',
@@ -315,7 +333,7 @@ export function subscribeToRoom({ roomId, onAnyChange, onPrivateChange = null })
         table: 'room_players',
         filter: `room_id=eq.${roomId}`,
       },
-      onAnyChange,
+      handlePlayerChange,
     )
     .on(
       'postgres_changes',
@@ -325,7 +343,7 @@ export function subscribeToRoom({ roomId, onAnyChange, onPrivateChange = null })
         table: 'room_states',
         filter: `room_id=eq.${roomId}`,
       },
-      onAnyChange,
+      handleRoomStateChange,
     )
     .on(
       'postgres_changes',
@@ -347,7 +365,9 @@ export function subscribeToRoom({ roomId, onAnyChange, onPrivateChange = null })
       },
       handlePrivateChange,
     )
-    .subscribe()
+    .subscribe((status) => {
+      onStatusChange?.(status)
+    })
 
   return () => {
     client.removeChannel(channel)

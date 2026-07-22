@@ -17,6 +17,8 @@ dist-ssr
 
 # Local Python/vector generation artifacts
 .venv*/
+__pycache__/
+*.py[cod]
 .gensim-data/
 word2vec-google-news-300*
 *.bin
@@ -24,6 +26,7 @@ word2vec-google-news-300*
 
 # Server-only game answer key used by the Supabase Edge Function.
 supabase/functions/_shared/wordgame/matrix.json
+supabase/.private/
 supabase/.temp/
 
 # Editor directories and files

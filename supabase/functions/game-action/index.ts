@@ -8,6 +8,17 @@ import {
   resolveShowdownVotes,
   startNextHand,
 } from '../_shared/wordgame/engine.js'
+import {
+  attachServerSimilarityScores,
+  buildServerSimilarityScores,
+  removeServerSimilarityScores,
+} from '../_shared/wordgame/serverSimilarityScores.js'
+import {
+  attachServerCatalogDeal,
+  buildServerCatalogDeal,
+  hasServerCatalogDeal,
+  removeServerCatalogDeal,
+} from '../_shared/wordgame/serverWordDeal.js'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -20,6 +31,9 @@ const ANTE = 10
 const MIN_BET = 10
 const PUBLIC_WORD_PHASES = new Set(['debate', 'showdownVoting', 'handComplete'])
 const FALLBACK_PLAYER_NAMES = ['North', 'East', 'South', 'West', 'Alpha', 'Bravo', 'Charlie', 'Delta']
+const SIMILARITY_MODES = new Set(['matrix-only', 'prefer-database', 'database-only'])
+const DEALING_MODES = new Set(['legacy-only', 'database-only'])
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -31,6 +45,87 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
+async function measureStage<T>(timings: Record<string, number>, stage: string, operation: () => Promise<T>) {
+  const startedAt = performance.now()
+
+  try {
+    return await operation()
+  } finally {
+    timings[stage] = Math.round((performance.now() - startedAt) * 10) / 10
+  }
+}
+
+function measureSyncStage<T>(timings: Record<string, number>, stage: string, operation: () => T) {
+  const startedAt = performance.now()
+
+  try {
+    return operation()
+  } finally {
+    timings[stage] = Math.round((performance.now() - startedAt) * 10) / 10
+  }
+}
+
+function normalizeCommandId(value: unknown) {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return crypto.randomUUID()
+  }
+
+  const commandId = String(value).trim()
+  if (!UUID_PATTERN.test(commandId)) {
+    throw new Error('Command id must be a valid UUID.')
+  }
+
+  return commandId
+}
+
+function classifyCommandError(error: unknown) {
+  const message = error instanceof Error ? error.message : ''
+
+  if (/Authentication required/i.test(message)) return 'authentication_required'
+  if (/Room membership required/i.test(message)) return 'membership_required'
+  if (/Room not found/i.test(message)) return 'room_not_found'
+  if (/Room state not found|No active game state/i.test(message)) return 'state_not_found'
+  if (/not your turn/i.test(message)) return 'wrong_turn'
+  if (/Only the room host/i.test(message)) return 'host_required'
+  if (/Room state changed on another device/i.test(message)) return 'version_conflict'
+  if (/Database|catalog|similarity|reserved neutral Judge word/i.test(message)) return 'database_operation_failed'
+  if (/Unknown game command/i.test(message)) return 'unknown_command'
+  if (/Command id/i.test(message)) return 'invalid_command_id'
+  return 'game_command_rejected'
+}
+
+function logCommandResult({
+  command,
+  errorCode = null,
+  replayed = false,
+  startedAt,
+  status,
+  timings,
+}: {
+  command: string
+  errorCode?: string | null
+  replayed?: boolean
+  startedAt: number
+  status: 'accepted' | 'rejected'
+  timings: Record<string, number>
+}) {
+  const entry = {
+    event: 'game_action',
+    command: command || 'unknown',
+    status,
+    replayed,
+    errorCode,
+    durationMs: Math.round((performance.now() - startedAt) * 10) / 10,
+    timings,
+  }
+
+  if (status === 'accepted') {
+    console.log(JSON.stringify(entry))
+  } else {
+    console.error(JSON.stringify(entry))
+  }
+}
+
 function randomFloat() {
   const values = new Uint32Array(1)
   crypto.getRandomValues(values)
@@ -39,6 +134,32 @@ function randomFloat() {
 
 function cloneGame(game: any) {
   return structuredClone(game)
+}
+
+function getSimilarityMode() {
+  const configuredMode = String(Deno.env.get('SIMILARITY_MODE') ?? 'prefer-database')
+    .trim()
+    .toLowerCase()
+
+  if (SIMILARITY_MODES.has(configuredMode)) {
+    return configuredMode
+  }
+
+  console.warn(`Unknown SIMILARITY_MODE "${configuredMode}"; using prefer-database.`)
+  return 'prefer-database'
+}
+
+function getDealingMode() {
+  const configuredMode = String(Deno.env.get('DEALING_MODE') ?? 'legacy-only')
+    .trim()
+    .toLowerCase()
+
+  if (DEALING_MODES.has(configuredMode)) {
+    return configuredMode
+  }
+
+  console.warn(`Unknown DEALING_MODE "${configuredMode}"; using legacy-only.`)
+  return 'legacy-only'
 }
 
 function shouldPublishWord(game: any, player: any) {
@@ -54,7 +175,7 @@ function shouldPublishWord(game: any, player: any) {
 }
 
 function sanitizeGameForRoomState(game: any) {
-  const sanitized = cloneGame(game)
+  const sanitized = removeServerCatalogDeal(removeServerSimilarityScores(cloneGame(game)))
   delete sanitized.onlineVotes
 
   sanitized.players = sanitized.players.map((player: any) => {
@@ -179,50 +300,127 @@ async function requireSupabaseUser(req: Request, supabaseUrl: string, anonKey: s
   return data.user
 }
 
-async function fetchRoomBundle(serviceClient: any, roomId: string) {
-  const [{ data: room, error: roomError }, { data: roomPlayers, error: playersError }, { data: roomState, error: stateError }] = await Promise.all([
-    serviceClient
-      .from('rooms')
-      .select('id, code, host_user_id, status, max_players, created_at, updated_at')
-      .eq('id', roomId)
-      .maybeSingle(),
-    serviceClient
-      .from('room_players')
-      .select('room_id, user_id, display_name, seat_index, is_ready, joined_at')
-      .eq('room_id', roomId)
-      .order('seat_index', { ascending: true }),
-    serviceClient
-      .from('room_states')
-      .select('room_id, version, state_json, updated_by, updated_at')
-      .eq('room_id', roomId)
-      .maybeSingle(),
-  ])
+async function fetchGameActionContext(
+  serviceClient: any,
+  roomId: string,
+  actorUserId: string,
+  commandId: string,
+) {
+  const { data, error } = await serviceClient.rpc('get_game_action_context', {
+    p_room_id: roomId,
+    p_actor_user_id: actorUserId,
+    p_command_id: commandId,
+  })
 
-  if (roomError) throw new Error(roomError.message)
-  if (playersError) throw new Error(playersError.message)
-  if (stateError) throw new Error(stateError.message)
-  if (!room) throw new Error('Room not found.')
-  if (!roomState) throw new Error('Room state not found.')
+  if (error) {
+    throw new Error(`Unable to load game action context: ${error.message}`)
+  }
+
+  if (!data?.room) throw new Error('Room not found.')
+  if (!data?.roomState) throw new Error('Room state not found.')
 
   return {
-    room,
-    roomPlayers: roomPlayers ?? [],
-    roomState,
+    room: data.room,
+    roomPlayers: Array.isArray(data.roomPlayers) ? data.roomPlayers : [],
+    roomState: data.roomState,
+    wordRows: Array.isArray(data.handWords) ? data.handWords : [],
+    reservationRows: data.reservation ? [data.reservation] : [],
+    receipt: data.receipt ?? null,
   }
 }
 
-async function fetchPrivateHandWords(serviceClient: any, roomId: string, handNumber: number) {
-  const { data, error } = await serviceClient
-    .from('hand_words')
-    .select('player_id, word')
-    .eq('room_id', roomId)
-    .eq('hand_number', handNumber)
+async function hydrateGameWithPrivateHand(
+  game: any,
+  wordRows: Array<{
+    player_id: number
+    word: string
+    catalog_word_id: number | null
+    deal_version: number | null
+  }>,
+  reservationRows: Array<{
+    deal_version: number
+    cycle_number: number
+    catalog_word_id: number
+    word: string
+  }>,
+) {
+  const catalogRow = wordRows.find(
+    (row) =>
+      (row.catalog_word_id !== null && row.catalog_word_id !== undefined) ||
+      (row.deal_version !== null && row.deal_version !== undefined),
+  )
 
-  if (error) {
-    throw new Error(error.message)
+  if (!catalogRow) {
+    return hydrateGameWithWords(game, wordRows)
   }
 
-  return data ?? []
+  if (!Number.isInteger(Number(catalogRow.deal_version)) || Number(catalogRow.deal_version) < 1) {
+    throw new Error('Catalog hand contains an invalid deal version.')
+  }
+
+  const expectedPlayerIds = game.players
+    .filter((player: any) => player.inHand)
+    .map((player: any) => Number(player.id))
+  const deal = buildServerCatalogDeal(wordRows, reservationRows, expectedPlayerIds)
+
+  if (!deal) {
+    throw new Error('Catalog hand assignments are incomplete or inconsistent.')
+  }
+
+  return attachServerCatalogDeal(game, deal)
+}
+
+async function hydrateGameWithDatabaseSimilarityScores(serviceClient: any, roomId: string, game: any) {
+  const similarityMode = getSimilarityMode()
+  const requiresDatabaseScoring = hasServerCatalogDeal(game)
+
+  if (!game?.judgeWord) {
+    return game
+  }
+
+  if (similarityMode === 'matrix-only') {
+    if (requiresDatabaseScoring) {
+      throw new Error('Catalog-dealt hands require database similarity scoring.')
+    }
+
+    return game
+  }
+
+  const expectedPlayerIds = game.players
+    .filter((player: any) => player.inHand && player.holeWord)
+    .map((player: any) => Number(player.id))
+
+  if (expectedPlayerIds.length === 0) {
+    return game
+  }
+
+  const response = await serviceClient.rpc('score_hand_word_similarities', {
+    p_room_id: roomId,
+    p_hand_number: Number(game.handNumber),
+    p_judge_word: game.judgeWord,
+  })
+
+  if (response.error) {
+    if (similarityMode === 'database-only' || requiresDatabaseScoring) {
+      throw new Error(`Database similarity scoring failed: ${response.error.message}`)
+    }
+
+    console.warn(`Database similarity unavailable; using matrix fallback: ${response.error.message}`)
+    return game
+  }
+
+  const scores = buildServerSimilarityScores(response.data ?? [], expectedPlayerIds)
+
+  if (!scores) {
+    if (similarityMode === 'database-only' || requiresDatabaseScoring) {
+      throw new Error('Database similarity scoring returned incomplete hand results.')
+    }
+
+    console.warn('Database similarity returned incomplete hand results; using matrix fallback.')
+    return game
+  }
+
+  return attachServerSimilarityScores(game, scores)
 }
 
 async function replacePrivateHandWords(serviceClient: any, roomId: string, game: any, roomPlayers: any[]) {
@@ -268,6 +466,54 @@ async function replacePrivateHandWords(serviceClient: any, roomId: string, game:
 
   const { error: insertError } = await serviceClient.from('hand_words').insert(rows)
   if (insertError) throw new Error(insertError.message)
+}
+
+function hasDealablePlayers(game: any) {
+  return game?.players?.filter((player: any) => player.inHand).length >= 2
+}
+
+async function persistCatalogHand({
+  serviceClient,
+  roomId,
+  userId,
+  expectedVersion,
+  nextGame,
+  nextStatus,
+}: {
+  serviceClient: any
+  roomId: string
+  userId: string
+  expectedVersion: number
+  nextGame: any
+  nextStatus: string | null
+}) {
+  const playerIds = nextGame.players
+    .filter((player: any) => player.inHand)
+    .map((player: any) => Number(player.id))
+  const stateToSave = sanitizeGameForRoomState(nextGame)
+  const response = await serviceClient.rpc('deal_catalog_hand', {
+    p_room_id: roomId,
+    p_hand_number: Number(nextGame.handNumber),
+    p_expected_version: Number(expectedVersion),
+    p_player_ids: playerIds,
+    p_state_json: stateToSave,
+    p_updated_by: userId,
+    p_next_status: nextStatus,
+    p_embedding_model: 'word2vec-google-news-300',
+  })
+
+  if (response.error) {
+    throw new Error(`Database catalog dealing failed: ${response.error.message}`)
+  }
+
+  if (!response.data?.roomState || !response.data?.room) {
+    throw new Error('Database catalog dealing returned an incomplete room result.')
+  }
+
+  return {
+    roomState: response.data.roomState,
+    room: response.data.room,
+  }
 }
 
 async function revealPublicWords(serviceClient: any, roomId: string, game: any) {
@@ -378,10 +624,137 @@ async function fetchVotesForResolution(serviceClient: any, game: any, roomId: st
   })
 }
 
+async function fetchSuccessfulCommandReceipt(
+  serviceClient: any,
+  roomId: string,
+  actorUserId: string,
+  commandId: string,
+) {
+  const { data, error } = await serviceClient
+    .from('room_actions')
+    .select('action_type, response_json, version_after')
+    .eq('room_id', roomId)
+    .eq('actor_user_id', actorUserId)
+    .eq('command_id', commandId)
+    .eq('accepted', true)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(`Unable to load command receipt: ${error.message}`)
+  }
+
+  return data ?? null
+}
+
+async function recordSuccessfulCommand({
+  serviceClient,
+  roomId,
+  actorUserId,
+  commandId,
+  command,
+  payload,
+  responseBody,
+  versionBefore,
+  versionAfter,
+}: {
+  serviceClient: any
+  roomId: string
+  actorUserId: string
+  commandId: string
+  command: string
+  payload: any
+  responseBody: any
+  versionBefore: number
+  versionAfter: number
+}) {
+  const { error } = await serviceClient.from('room_actions').insert({
+    room_id: roomId,
+    actor_user_id: actorUserId,
+    action_type: command,
+    payload: payload ?? {},
+    accepted: true,
+    error_text: null,
+    version_before: versionBefore,
+    version_after: versionAfter,
+    command_id: commandId,
+    response_json: responseBody,
+  })
+
+  if (!error) {
+    return responseBody
+  }
+
+  if (error.code === '23505') {
+    const priorReceipt = await fetchSuccessfulCommandReceipt(
+      serviceClient,
+      roomId,
+      actorUserId,
+      commandId,
+    )
+
+    if (priorReceipt?.response_json) {
+      if (priorReceipt.action_type !== command) {
+        throw new Error('Command id was already used for another command.')
+      }
+
+      return priorReceipt.response_json
+    }
+  }
+
+  throw new Error(`Unable to record command receipt: ${error.message}`)
+}
+
+async function recordRejectedCommand({
+  serviceClient,
+  roomId,
+  actorUserId,
+  command,
+  errorCode,
+  versionBefore,
+}: {
+  serviceClient: any
+  roomId: string
+  actorUserId: string
+  command: string
+  errorCode: string
+  versionBefore: number | null
+}) {
+  const { error } = await serviceClient.from('room_actions').insert({
+    room_id: roomId,
+    actor_user_id: actorUserId,
+    action_type: command || 'unknown',
+    payload: {},
+    accepted: false,
+    error_text: errorCode,
+    version_before: versionBefore,
+    version_after: null,
+    command_id: null,
+    response_json: null,
+  })
+
+  if (error) {
+    console.error(JSON.stringify({
+      event: 'game_action_audit_failure',
+      errorCode: 'command_audit_write_failed',
+    }))
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
   }
+
+  const requestStartedAt = performance.now()
+  const timings: Record<string, number> = {}
+  let serviceClient: any = null
+  let actorUserId = ''
+  let roomId = ''
+  let command = ''
+  let commandId = ''
+  let payload: any = {}
+  let versionBefore: number | null = null
+  let membershipVerified = false
 
   try {
     if (req.method !== 'POST') {
@@ -396,32 +769,57 @@ Deno.serve(async (req) => {
       throw new Error('Supabase Edge Function environment is not configured.')
     }
 
-    const user = await requireSupabaseUser(req, supabaseUrl, anonKey)
-    const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        persistSession: false,
-      },
-    })
-
-    const body = await req.json()
-    const roomId = String(body.roomId ?? '')
-    const command = String(body.command ?? '')
-    const payload = body.payload ?? {}
+    const body = await measureStage(timings, 'requestParse', () => req.json())
+    roomId = String(body.roomId ?? '')
+    command = String(body.command ?? '')
+    commandId = normalizeCommandId(body.commandId)
+    payload = body.payload ?? {}
 
     if (!roomId) {
       throw new Error('Room id is required.')
     }
 
-    const { room, roomPlayers, roomState } = await fetchRoomBundle(serviceClient, roomId)
+    const user = await measureStage(timings, 'authentication', () => {
+      return requireSupabaseUser(req, supabaseUrl, anonKey)
+    })
+    actorUserId = user.id
+    serviceClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+      },
+    })
+
+    const context = await measureStage(timings, 'actionContext', () => {
+      return fetchGameActionContext(serviceClient, roomId, actorUserId, commandId)
+    })
+    const { room, roomPlayers, roomState, wordRows, reservationRows, receipt } = context
+    versionBefore = Number(roomState.version)
     const currentMember = roomPlayers.find((player) => player.user_id === user.id)
 
     if (!currentMember) {
       throw new Error('Room membership required.')
     }
+    membershipVerified = true
+
+    if (receipt?.response_json) {
+      if (receipt.action_type !== command) {
+        throw new Error('Command id was already used for another command.')
+      }
+
+      logCommandResult({
+        command,
+        replayed: true,
+        startedAt: requestStartedAt,
+        status: 'accepted',
+        timings,
+      })
+      return jsonResponse(receipt.response_json)
+    }
 
     const isHost = room.host_user_id === user.id
     const stateJson = roomState.state_json
     const rng = randomFloat
+    const dealingMode = getDealingMode()
     let nextGame: any
     let nextStatus: string | null = null
     let replaceWords = false
@@ -435,12 +833,14 @@ Deno.serve(async (req) => {
         throw new Error('Need at least 3 players to start this game mode.')
       }
 
-      nextGame = createInitialGame({
-        playerNames: getRoomPlayerNames(roomPlayers),
-        startingStack: payload.startingStack ?? STARTING_STACK,
-        ante: payload.ante ?? ANTE,
-        bigBlind: payload.bigBlind ?? MIN_BET,
-        rng,
+      nextGame = measureSyncStage(timings, 'stateTransition', () => {
+        return createInitialGame({
+          playerNames: getRoomPlayerNames(roomPlayers),
+          startingStack: payload.startingStack ?? STARTING_STACK,
+          ante: payload.ante ?? ANTE,
+          bigBlind: payload.bigBlind ?? MIN_BET,
+          rng,
+        })
       })
       nextStatus = 'playing'
       replaceWords = true
@@ -453,8 +853,12 @@ Deno.serve(async (req) => {
         throw new Error('No active game state found.')
       }
 
-      const wordRows = await fetchPrivateHandWords(serviceClient, roomId, Number(stateJson.handNumber))
-      const fullGame = hydrateGameWithWords(stateJson, wordRows)
+      const hydratedGame = measureSyncStage(timings, 'privateHydration', () => {
+        return hydrateGameWithPrivateHand(stateJson, wordRows, reservationRows)
+      })
+      const fullGame = await measureStage(timings, 'similarityHydration', () => {
+        return hydrateGameWithDatabaseSimilarityScores(serviceClient, roomId, hydratedGame)
+      })
 
       if (command === 'playerAction') {
         const actingSeatIndex = Number(fullGame.currentPlayerIndex)
@@ -462,7 +866,9 @@ Deno.serve(async (req) => {
           throw new Error('It is not your turn yet.')
         }
 
-        nextGame = applyPlayerAction(fullGame, payload.type, Number(payload.amount))
+        nextGame = measureSyncStage(timings, 'stateTransition', () => {
+          return applyPlayerAction(fullGame, payload.type, Number(payload.amount))
+        })
       } else if (command === 'markArgumentComplete') {
         const playerId = Number(payload.playerId)
 
@@ -470,40 +876,54 @@ Deno.serve(async (req) => {
           throw new Error('Players can only mark their own argument.')
         }
 
-        nextGame = markArgumentComplete(fullGame, playerId, payload.phaseKey ?? null)
+        nextGame = measureSyncStage(timings, 'stateTransition', () => {
+          return markArgumentComplete(fullGame, playerId, payload.phaseKey ?? null)
+        })
       } else if (command === 'forceCompleteArguments') {
         if (!isHost) {
           throw new Error('Only the room host can override argument tracking.')
         }
 
-        nextGame = forceCompleteArguments(fullGame, payload.phaseKey ?? null)
+        nextGame = measureSyncStage(timings, 'stateTransition', () => {
+          return forceCompleteArguments(fullGame, payload.phaseKey ?? null)
+        })
       } else if (command === 'completeDebate') {
         if (!isHost) {
           throw new Error('Only the room host can advance closing arguments.')
         }
 
-        nextGame = completeDebateStage(fullGame, { force: Boolean(payload.force) })
+        nextGame = measureSyncStage(timings, 'stateTransition', () => {
+          return completeDebateStage(fullGame, { force: Boolean(payload.force) })
+        })
       } else if (command === 'resolveVotes') {
-        const voteRows = await fetchVotesForResolution(serviceClient, fullGame, roomId)
-        nextGame = resolveShowdownVotes(fullGame, buildVotesPayload(voteRows))
+        const voteRows = await measureStage(timings, 'voteHydration', () => {
+          return fetchVotesForResolution(serviceClient, fullGame, roomId)
+        })
+        nextGame = measureSyncStage(timings, 'stateTransition', () => {
+          return resolveShowdownVotes(fullGame, buildVotesPayload(voteRows))
+        })
       } else if (command === 'startNextHand') {
         if (!isHost) {
           throw new Error('Only the room host can start the next hand.')
         }
 
-        nextGame = startNextHand(fullGame, { rng })
+        nextGame = measureSyncStage(timings, 'stateTransition', () => {
+          return startNextHand(fullGame, { rng })
+        })
         replaceWords = true
       } else if (command === 'startNewGame') {
         if (!isHost) {
           throw new Error('Only the room host can start a new game.')
         }
 
-        nextGame = createInitialGame({
-          playerNames: getRoomPlayerNames(roomPlayers),
-          startingStack: payload.startingStack ?? STARTING_STACK,
-          ante: payload.ante ?? ANTE,
-          bigBlind: payload.bigBlind ?? MIN_BET,
-          rng,
+        nextGame = measureSyncStage(timings, 'stateTransition', () => {
+          return createInitialGame({
+            playerNames: getRoomPlayerNames(roomPlayers),
+            startingStack: payload.startingStack ?? STARTING_STACK,
+            ante: payload.ante ?? ANTE,
+            bigBlind: payload.bigBlind ?? MIN_BET,
+            rng,
+          })
         })
         replaceWords = true
       } else {
@@ -511,24 +931,112 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (replaceWords) {
-      await replacePrivateHandWords(serviceClient, roomId, nextGame, roomPlayers)
+    let saved
+
+    if (replaceWords && dealingMode === 'database-only' && hasDealablePlayers(nextGame)) {
+      if (nextGame.phase !== 'preflop') {
+        throw new Error('Catalog dealing cannot persist a hand that already advanced beyond preflop.')
+      }
+
+      saved = await measureStage(timings, 'persistence', () => {
+        return persistCatalogHand({
+          serviceClient,
+          roomId,
+          userId: user.id,
+          expectedVersion: Number(roomState.version),
+          nextGame,
+          nextStatus,
+        })
+      })
+    } else {
+      if (replaceWords) {
+        await measureStage(timings, 'legacyWordPersistence', () => {
+          return replacePrivateHandWords(serviceClient, roomId, nextGame, roomPlayers)
+        })
+      }
+
+      saved = await measureStage(timings, 'persistence', () => {
+        return saveGameState({
+          serviceClient,
+          roomId,
+          userId: user.id,
+          expectedVersion: Number(roomState.version),
+          nextGame,
+          nextStatus,
+        })
+      })
     }
 
-    const saved = await saveGameState({
-      serviceClient,
-      roomId,
-      userId: user.id,
-      expectedVersion: Number(roomState.version),
-      nextGame,
-      nextStatus,
-    })
-
-    return jsonResponse({
+    const responseBody = {
       roomState: saved.roomState,
       room: saved.room ?? room,
+    }
+    const finalResponseBody = await measureStage(timings, 'commandReceipt', () => {
+      return recordSuccessfulCommand({
+        serviceClient,
+        roomId,
+        actorUserId,
+        commandId,
+        command,
+        payload,
+        responseBody,
+        versionBefore: Number(roomState.version),
+        versionAfter: Number(saved.roomState.version),
+      })
     })
+
+    logCommandResult({
+      command,
+      replayed: finalResponseBody !== responseBody,
+      startedAt: requestStartedAt,
+      status: 'accepted',
+      timings,
+    })
+    return jsonResponse(finalResponseBody)
   } catch (error) {
+    const errorCode = classifyCommandError(error)
+
+    if (serviceClient && actorUserId && roomId && commandId) {
+      try {
+        const receipt = await measureStage(timings, 'receiptRecovery', () => {
+          return fetchSuccessfulCommandReceipt(serviceClient, roomId, actorUserId, commandId)
+        })
+
+        if (receipt?.response_json && receipt.action_type === command) {
+          logCommandResult({
+            command,
+            replayed: true,
+            startedAt: requestStartedAt,
+            status: 'accepted',
+            timings,
+          })
+          return jsonResponse(receipt.response_json)
+        }
+      } catch {
+        // Preserve the original command error when receipt recovery is unavailable.
+      }
+    }
+
+    if (serviceClient && actorUserId && roomId && membershipVerified) {
+      await measureStage(timings, 'rejectionAudit', () => {
+        return recordRejectedCommand({
+          serviceClient,
+          roomId,
+          actorUserId,
+          command,
+          errorCode,
+          versionBefore,
+        })
+      })
+    }
+
+    logCommandResult({
+      command,
+      errorCode,
+      startedAt: requestStartedAt,
+      status: 'rejected',
+      timings,
+    })
     return jsonResponse(
       {
         error: error instanceof Error ? error.message : 'Game command failed.',

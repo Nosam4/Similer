@@ -48,18 +48,32 @@ Current Judge payout rules:
 
 ## Words And Similarity
 
-The frontend uses `src/wordgame/wordBank.json` to display the public word bank size and support local demo play.
+The frontend/local game uses `src/wordgame/wordBank.json` for fast single-device playtesting. It does not query Supabase for words or similarity; local similarity remains a stable placeholder.
 
 Online similarity scoring is backend-authoritative:
 
-- The real 100-word matrix is stored as `supabase/functions/_shared/wordgame/matrix.json`.
-- That matrix file is intentionally ignored by Git so players cannot inspect the frontend bundle to cheat.
-- The Supabase Edge Function loads the hidden matrix and resolves online similarity scores server-side.
+- Supabase pgvector currently stores 2,000 private normalized word embeddings.
+- The `game-action` Edge Function requests only Judge-to-hand scores and never publishes the private score map before showdown.
+- During the safe rollout, `SIMILARITY_MODE=prefer-database` uses the existing matrix only when the database RPC is unavailable or incomplete.
+- The temporary matrix remains at `supabase/functions/_shared/wordgame/matrix.json` and is intentionally ignored by Git.
+- Transactional database dealing, per-room shuffle cycles, and one private neutral Judge-word reservation per hand are installed behind `DEALING_MODE`.
+- Live multiplayer now uses `DEALING_MODE=database-only` and `SIMILARITY_MODE=database-only`, so new hands are dealt from the 2,000-word catalog.
+- The original 100-word dealer remains available through `DEALING_MODE=legacy-only` as the immediate rollback path.
+- Catalog-dealt hands fail closed if database similarity is unavailable; they can never fall back to the incompatible 100-word matrix.
 
-Word generation utilities are kept for future word packs:
+The tracked multiplayer catalog is `word-packs/multiplayer-2000.txt`. Its reproducible generation and validation utilities are:
 
+- `scripts/generate_multiplayer_catalog.py`
+- `scripts/audit_multiplayer_catalog.py`
 - `scripts/generate_word_matrix.py`
+- `scripts/export_word_embeddings.py`
+- `scripts/import_word_embeddings.mjs`
+- `scripts/verify_live_catalog_dealing.py`
+- `scripts/verify_live_game_action_catalog_dealing.mjs`
+- `scripts/verify_word_embedding_parity.py`
 - `scripts/requirements-wordgen.txt`
+
+See `docs/vector-similarity-rollout.md` for migration, import, verification, rollback, and eventual matrix-removal steps.
 
 ## Multiplayer
 
@@ -105,7 +119,7 @@ Deploy the Edge Function after changing server-side game logic:
 supabase functions deploy game-action --project-ref yvltpqzlcbcdrtchnfrb
 ```
 
-The server-only matrix must exist locally at:
+During the guarded rollout, the server-only fallback matrix must exist locally at:
 
 ```text
 supabase/functions/_shared/wordgame/matrix.json

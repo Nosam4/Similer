@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import {
   applyPlayerAction,
   createInitialGame,
@@ -81,6 +82,8 @@ export function useGameActions({
   startingStack,
   userId,
 }) {
+  const onlineActionInFlightRef = useRef(false)
+
   function resetHandInputs() {
     setAmountInput('')
     setPlayerVotes({})
@@ -89,8 +92,13 @@ export function useGameActions({
   }
 
   async function runAction(type, amountOverride) {
+    if (isOnlinePlaying && onlineActionInFlightRef.current) {
+      return
+    }
+
     try {
       if (isOnlinePlaying) {
+        onlineActionInFlightRef.current = true
         setOnlineGameBusy(true)
         const result = await invokeGameCommand({
           roomId,
@@ -127,6 +135,7 @@ export function useGameActions({
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Action failed.')
     } finally {
+      onlineActionInFlightRef.current = false
       setOnlineGameBusy(false)
     }
   }

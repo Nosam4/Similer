@@ -22,6 +22,7 @@ function getPotBetTarget({ legal, potSummary, fraction }) {
 
 function TurnPanel({
   actor,
+  busy = false,
   legal,
   potSummary,
   amountInput,
@@ -47,6 +48,7 @@ function TurnPanel({
           id="amount-input"
           type="number"
           min="0"
+          disabled={busy}
           value={amountInput}
           onChange={(event) => setAmountInput(event.target.value)}
           placeholder="Enter target chips"
@@ -54,7 +56,7 @@ function TurnPanel({
         <button
           type="button"
           className="quick-bet-button"
-          disabled={!legal.bet}
+          disabled={busy || !legal.bet}
           onClick={() => setAmountInput(String(legal.minBetTo ?? legal.maxTo ?? 0))}
         >
           Min Bet
@@ -62,7 +64,7 @@ function TurnPanel({
         <button
           type="button"
           className="quick-bet-button"
-          disabled={!legal.raise}
+          disabled={busy || !legal.raise}
           onClick={() => setAmountInput(String(legal.minRaiseTo ?? legal.maxTo ?? 0))}
         >
           Min Raise
@@ -70,7 +72,7 @@ function TurnPanel({
         <button
           type="button"
           className="quick-bet-button"
-          disabled={!canSetBetTarget}
+          disabled={busy || !canSetBetTarget}
           onClick={() => {
             setAmountInput(String(getPotBetTarget({ legal, potSummary, fraction: 0.5 })))
           }}
@@ -80,7 +82,7 @@ function TurnPanel({
         <button
           type="button"
           className="quick-bet-button"
-          disabled={!canSetBetTarget}
+          disabled={busy || !canSetBetTarget}
           onClick={() => {
             setAmountInput(String(getPotBetTarget({ legal, potSummary, fraction: 1 })))
           }}
@@ -90,7 +92,7 @@ function TurnPanel({
         <button
           type="button"
           className="quick-bet-button"
-          disabled={!canSetBetTarget}
+          disabled={busy || !canSetBetTarget}
           onClick={() => setAmountInput(String(legal.maxTo ?? 0))}
         >
           Max
@@ -101,7 +103,7 @@ function TurnPanel({
         <button
           type="button"
           className="action-button fold-action"
-          disabled={!legal.fold}
+          disabled={busy || !legal.fold}
           onClick={() => onRunAction('fold')}
         >
           Fold
@@ -109,7 +111,7 @@ function TurnPanel({
         <button
           type="button"
           className="action-button check-action"
-          disabled={!legal.check}
+          disabled={busy || !legal.check}
           onClick={() => onRunAction('check')}
         >
           Check
@@ -117,7 +119,7 @@ function TurnPanel({
         <button
           type="button"
           className="action-button call-action"
-          disabled={!legal.call}
+          disabled={busy || !legal.call}
           onClick={() => onRunAction('call')}
         >
           Call ({legal.callAmount})
@@ -125,7 +127,7 @@ function TurnPanel({
         <button
           type="button"
           className="action-button bet-action"
-          disabled={!legal.bet}
+          disabled={busy || !legal.bet}
           onClick={() => onRunAction('bet')}
         >
           Bet
@@ -133,7 +135,7 @@ function TurnPanel({
         <button
           type="button"
           className="action-button raise-action"
-          disabled={!legal.raise}
+          disabled={busy || !legal.raise}
           onClick={() => onRunAction('raise')}
         >
           Raise
@@ -141,7 +143,7 @@ function TurnPanel({
         <button
           type="button"
           className="action-button all-in-action"
-          disabled={!legal.allIn}
+          disabled={busy || !legal.allIn}
           onClick={() => onRunAction('all-in')}
         >
           All-in

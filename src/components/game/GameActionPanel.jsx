@@ -127,6 +127,7 @@ function GameActionPanel({
           ) : (
             <TurnPanel
               actor={actor}
+              busy={isOnlinePlaying ? onlineGameBusy : false}
               legal={legal}
               potSummary={potSummary}
               amountInput={amountInput}

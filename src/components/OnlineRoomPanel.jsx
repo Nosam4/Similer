@@ -23,6 +23,7 @@ const MAX_ROOM_PLAYERS = 8
 const DISPLAY_NAME_STORAGE_KEY = 'similer.displayName'
 const ROOM_CODE_STORAGE_KEY = 'similer.roomCode'
 const MISSING_DISPLAY_NAME_ERROR = 'Enter your name to start.'
+const DISCONNECTED_REFRESH_INTERVAL_MS = 10_000
 
 function readRememberedDisplayName() {
   if (typeof window === 'undefined') {
@@ -147,50 +148,169 @@ function OnlineRoomPanel({
     }
 
     let isMounted = true
+    let refreshInFlight = false
+    let refreshQueued = false
+    let queuedRefreshIsSilent = true
+    let realtimeStatus = 'CONNECTING'
+
+    function clearRoom() {
+      setRoom(null)
+      setPlayers([])
+      setRoomState(null)
+      rememberRoomCode('')
+    }
+
+    function normalizeRealtimePlayer(player) {
+      return {
+        ...player,
+        display_name: sanitizeDisplayNameInput(player?.display_name) || 'Player',
+      }
+    }
+
+    function applyRoomChange(payload) {
+      if (!isMounted) {
+        return
+      }
+
+      if (payload?.eventType === 'DELETE') {
+        clearRoom()
+        return
+      }
+
+      if (payload?.new?.id === room.id) {
+        setRoom((previous) => {
+          if (previous?.updated_at && payload.new.updated_at < previous.updated_at) {
+            return previous
+          }
+
+          return payload.new
+        })
+      }
+    }
+
+    function applyPlayerChange(payload) {
+      if (!isMounted) {
+        return
+      }
+
+      const changedPlayer = payload?.eventType === 'DELETE' ? payload.old : payload.new
+      if (!changedPlayer?.user_id) {
+        return
+      }
+
+      setPlayers((previous) => {
+        const withoutChangedPlayer = previous.filter(
+          (player) => player.user_id !== changedPlayer.user_id,
+        )
+
+        if (payload.eventType === 'DELETE') {
+          return withoutChangedPlayer
+        }
+
+        return [...withoutChangedPlayer, normalizeRealtimePlayer(changedPlayer)].sort(
+          (left, right) => left.seat_index - right.seat_index,
+        )
+      })
+    }
+
+    function applyRoomStateChange(payload) {
+      if (!isMounted) {
+        return
+      }
+
+      if (payload?.eventType === 'DELETE') {
+        setRoomState(null)
+        return
+      }
+
+      if (payload?.new?.room_id === room.id) {
+        setRoomState((previous) => {
+          return Number(previous?.version) > Number(payload.new.version) ? previous : payload.new
+        })
+      }
+    }
 
     async function refreshRoomState({ silent = false } = {}) {
+      if (refreshInFlight) {
+        refreshQueued = true
+        queuedRefreshIsSilent = queuedRefreshIsSilent && silent
+        return
+      }
+
+      refreshInFlight = true
+      let currentRefreshIsSilent = silent
+
       try {
-        const [nextRoom, nextPlayers, nextRoomState] = await Promise.all([
-          fetchRoom(room.id),
-          fetchRoomPlayers(room.id),
-          fetchRoomState(room.id),
-        ])
+        do {
+          refreshQueued = false
+          queuedRefreshIsSilent = true
 
-        if (!isMounted) {
-          return
-        }
+          try {
+            const [nextRoom, nextPlayers, nextRoomState] = await Promise.all([
+              fetchRoom(room.id),
+              fetchRoomPlayers(room.id),
+              fetchRoomState(room.id),
+            ])
 
-        if (!nextRoom) {
-          setRoom(null)
-          setPlayers([])
-          setRoomState(null)
-          rememberRoomCode('')
-          return
-        }
+            if (!isMounted) {
+              return
+            }
 
-        setRoom(nextRoom)
-        setPlayers(nextPlayers)
-        setRoomState(nextRoomState)
-        setErrorText('')
-      } catch (error) {
-        if (!isMounted) {
-          return
-        }
+            if (!nextRoom) {
+              clearRoom()
+              return
+            }
 
-        if (!silent) {
-          setErrorText(error instanceof Error ? error.message : 'Failed to refresh room data.')
-        }
+            setRoom((previous) => {
+              if (previous?.updated_at && nextRoom.updated_at < previous.updated_at) {
+                return previous
+              }
+
+              return nextRoom
+            })
+            setPlayers(nextPlayers)
+            setRoomState((previous) => {
+              return Number(previous?.version) > Number(nextRoomState?.version)
+                ? previous
+                : nextRoomState
+            })
+            setErrorText('')
+          } catch (error) {
+            if (!isMounted) {
+              return
+            }
+
+            if (!currentRefreshIsSilent) {
+              setErrorText(error instanceof Error ? error.message : 'Failed to refresh room data.')
+            }
+          }
+
+          currentRefreshIsSilent = queuedRefreshIsSilent
+        } while (isMounted && refreshQueued)
+      } finally {
+        refreshInFlight = false
       }
     }
 
     const unsubscribe = subscribeToRoom({
       roomId: room.id,
-      onAnyChange: refreshRoomState,
+      onRoomChange: applyRoomChange,
+      onPlayerChange: applyPlayerChange,
+      onRoomStateChange: applyRoomStateChange,
       onPrivateChange: onPrivateDataChange,
+      onStatusChange: (status) => {
+        realtimeStatus = status
+
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          refreshRoomState({ silent: true })
+        }
+      },
     })
     const intervalId = window.setInterval(() => {
-      refreshRoomState({ silent: true })
-    }, 2500)
+      if (realtimeStatus !== 'SUBSCRIBED') {
+        refreshRoomState({ silent: true })
+      }
+    }, DISCONNECTED_REFRESH_INTERVAL_MS)
 
     function refreshWhenVisible() {
       if (document.visibilityState === 'visible') {
