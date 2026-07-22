@@ -256,6 +256,9 @@ async function main() {
     ) {
       throw new Error('Live Judge scoring did not return three complete finite scores.')
     }
+    const expectedScoreByPlayerId = new Map(
+      scoreRows.map((row) => [Number(row.player_id), Number(row.score)]),
+    )
 
     const contenderSession = sessions.find((session) => session.seatIndex === contenderIds[0])
     const visibleAfterJudge = requireNoError(
@@ -331,6 +334,23 @@ async function main() {
     if (state.phase !== 'handComplete' || !state.showdown?.winner) {
       throw new Error('The live catalog-backed hand did not resolve successfully.')
     }
+    const completedScores = state.showdown.allSimilarityScores ?? []
+    const contenderScores = state.showdown.contenders ?? []
+    if (
+      completedScores.length !== 3 ||
+      completedScores.some((row) => {
+        const actualScore = Number(row.similarity)
+        const expectedScore = expectedScoreByPlayerId.get(Number(row.playerId))
+        return (
+          !Number.isFinite(actualScore) ||
+          !Number.isFinite(expectedScore) ||
+          Math.abs(actualScore - expectedScore) > 0.01
+        )
+      }) ||
+      contenderScores.some((row) => !Number.isFinite(Number(row.similarity)))
+    ) {
+      throw new Error('Completed showdown did not publish its finite database similarity scores.')
+    }
 
     const secondStarted = await invokeGameCommand(sessions[0].client, roomId, 'startNextHand')
     const secondState = secondStarted.roomState.state_json
@@ -351,7 +371,7 @@ async function main() {
 
     console.log('Edge deal check: fresh public room received three catalog-backed private words')
     console.log('Privacy check: preflop clients saw only their own word; Judge reveal exposed no contender word')
-    console.log('Scoring check: live Judge word returned three complete finite database scores')
+    console.log('Scoring check: live Judge word returned and published three finite database scores')
     console.log('Lifecycle check: betting, arguments, voting, and payout completed successfully')
     console.log('Shuffle-cycle check: the second hand used four new catalog words')
   } finally {

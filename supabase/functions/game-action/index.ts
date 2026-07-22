@@ -370,11 +370,40 @@ async function hydrateGameWithPrivateHand(
   return attachServerCatalogDeal(game, deal)
 }
 
-async function hydrateGameWithDatabaseSimilarityScores(serviceClient: any, roomId: string, game: any) {
+function commandCanResolveWithSimilarity(command: string, game: any) {
+  if (command === 'resolveVotes') {
+    return true
+  }
+
+  if (game?.phase !== 'debate' || game?.showdownMode !== 'similarityDuel') {
+    return false
+  }
+
+  return (
+    command === 'markArgumentComplete' ||
+    command === 'forceCompleteArguments' ||
+    command === 'completeDebate'
+  )
+}
+
+async function hydrateGameWithDatabaseSimilarityScores(
+  serviceClient: any,
+  roomId: string,
+  game: any,
+  command: string,
+) {
+  if (!commandCanResolveWithSimilarity(command, game)) {
+    return game
+  }
+
   const similarityMode = getSimilarityMode()
   const requiresDatabaseScoring = hasServerCatalogDeal(game)
 
   if (!game?.judgeWord) {
+    if (requiresDatabaseScoring) {
+      throw new Error('Catalog showdown is missing its Judge word for database similarity scoring.')
+    }
+
     return game
   }
 
@@ -853,11 +882,11 @@ Deno.serve(async (req) => {
         throw new Error('No active game state found.')
       }
 
-      const hydratedGame = measureSyncStage(timings, 'privateHydration', () => {
+      const hydratedGame = await measureStage(timings, 'privateHydration', () => {
         return hydrateGameWithPrivateHand(stateJson, wordRows, reservationRows)
       })
       const fullGame = await measureStage(timings, 'similarityHydration', () => {
-        return hydrateGameWithDatabaseSimilarityScores(serviceClient, roomId, hydratedGame)
+        return hydrateGameWithDatabaseSimilarityScores(serviceClient, roomId, hydratedGame, command)
       })
 
       if (command === 'playerAction') {
