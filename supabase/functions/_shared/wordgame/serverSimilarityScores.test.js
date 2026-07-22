@@ -52,12 +52,12 @@ describe('server similarity score helpers', () => {
     assert.equal(buildServerSimilarityScores([{ player_id: 0, score: null }], [0]), null)
   })
 
-  it('keeps scores transient and fails closed when an attached player is missing', () => {
+  it('keeps scores transient and reports a missing attached player as unavailable', () => {
     const original = { handNumber: 3 }
     const hydrated = attachServerSimilarityScores(original, { 2: 91.25 })
 
     assert.equal(getServerSimilarityScore(hydrated, 2), 91.25)
-    assert.equal(getServerSimilarityScore(hydrated, 3), Number.NEGATIVE_INFINITY)
+    assert.equal(getServerSimilarityScore(hydrated, 3), null)
     assert.equal(getServerSimilarityScore(original, 2), null)
     assert.equal(removeServerSimilarityScores(hydrated)[SERVER_SIMILARITY_SCORES_FIELD], undefined)
     assert.deepEqual(original, { handNumber: 3 })

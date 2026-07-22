@@ -16,7 +16,6 @@ import {
 import {
   attachServerCatalogDeal,
   buildServerCatalogDeal,
-  hasServerCatalogDeal,
   removeServerCatalogDeal,
 } from '../_shared/wordgame/serverWordDeal.js'
 
@@ -31,8 +30,6 @@ const ANTE = 10
 const MIN_BET = 10
 const PUBLIC_WORD_PHASES = new Set(['debate', 'showdownVoting', 'handComplete'])
 const FALLBACK_PLAYER_NAMES = ['North', 'East', 'South', 'West', 'Alpha', 'Bravo', 'Charlie', 'Delta']
-const SIMILARITY_MODES = new Set(['matrix-only', 'prefer-database', 'database-only'])
-const DEALING_MODES = new Set(['legacy-only', 'database-only'])
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function jsonResponse(body: unknown, status = 200) {
@@ -126,40 +123,8 @@ function logCommandResult({
   }
 }
 
-function randomFloat() {
-  const values = new Uint32Array(1)
-  crypto.getRandomValues(values)
-  return values[0] / 0x100000000
-}
-
 function cloneGame(game: any) {
   return structuredClone(game)
-}
-
-function getSimilarityMode() {
-  const configuredMode = String(Deno.env.get('SIMILARITY_MODE') ?? 'prefer-database')
-    .trim()
-    .toLowerCase()
-
-  if (SIMILARITY_MODES.has(configuredMode)) {
-    return configuredMode
-  }
-
-  console.warn(`Unknown SIMILARITY_MODE "${configuredMode}"; using prefer-database.`)
-  return 'prefer-database'
-}
-
-function getDealingMode() {
-  const configuredMode = String(Deno.env.get('DEALING_MODE') ?? 'legacy-only')
-    .trim()
-    .toLowerCase()
-
-  if (DEALING_MODES.has(configuredMode)) {
-    return configuredMode
-  }
-
-  console.warn(`Unknown DEALING_MODE "${configuredMode}"; using legacy-only.`)
-  return 'legacy-only'
 }
 
 function shouldPublishWord(game: any, player: any) {
@@ -190,15 +155,6 @@ function sanitizeGameForRoomState(game: any) {
   })
 
   return sanitized
-}
-
-function extractPrivateHandWords(game: any) {
-  return game.players
-    .filter((player: any) => player.inHand && player.holeWord)
-    .map((player: any) => ({
-      playerId: player.id,
-      word: player.holeWord,
-    }))
 }
 
 function getPublicRevealPlayerIds(game: any) {
@@ -396,23 +352,8 @@ async function hydrateGameWithDatabaseSimilarityScores(
     return game
   }
 
-  const similarityMode = getSimilarityMode()
-  const requiresDatabaseScoring = hasServerCatalogDeal(game)
-
   if (!game?.judgeWord) {
-    if (requiresDatabaseScoring) {
-      throw new Error('Catalog showdown is missing its Judge word for database similarity scoring.')
-    }
-
-    return game
-  }
-
-  if (similarityMode === 'matrix-only') {
-    if (requiresDatabaseScoring) {
-      throw new Error('Catalog-dealt hands require database similarity scoring.')
-    }
-
-    return game
+    throw new Error('Database similarity scoring requires a Judge word.')
   }
 
   const expectedPlayerIds = game.players
@@ -430,71 +371,16 @@ async function hydrateGameWithDatabaseSimilarityScores(
   })
 
   if (response.error) {
-    if (similarityMode === 'database-only' || requiresDatabaseScoring) {
-      throw new Error(`Database similarity scoring failed: ${response.error.message}`)
-    }
-
-    console.warn(`Database similarity unavailable; using matrix fallback: ${response.error.message}`)
-    return game
+    throw new Error(`Database similarity scoring failed: ${response.error.message}`)
   }
 
   const scores = buildServerSimilarityScores(response.data ?? [], expectedPlayerIds)
 
   if (!scores) {
-    if (similarityMode === 'database-only' || requiresDatabaseScoring) {
-      throw new Error('Database similarity scoring returned incomplete hand results.')
-    }
-
-    console.warn('Database similarity returned incomplete hand results; using matrix fallback.')
-    return game
+    throw new Error('Database similarity scoring returned incomplete hand results.')
   }
 
   return attachServerSimilarityScores(game, scores)
-}
-
-async function replacePrivateHandWords(serviceClient: any, roomId: string, game: any, roomPlayers: any[]) {
-  const handNumber = Number(game.handNumber)
-  const seatToUserId = new Map(roomPlayers.map((player) => [Number(player.seat_index), player.user_id]))
-  const privateWords = extractPrivateHandWords(game)
-
-  const { error: deleteWordsError } = await serviceClient
-    .from('hand_words')
-    .delete()
-    .eq('room_id', roomId)
-    .eq('hand_number', handNumber)
-
-  if (deleteWordsError) throw new Error(deleteWordsError.message)
-
-  const { error: deleteVotesError } = await serviceClient
-    .from('showdown_votes')
-    .delete()
-    .eq('room_id', roomId)
-    .eq('hand_number', handNumber)
-
-  if (deleteVotesError) throw new Error(deleteVotesError.message)
-
-  if (privateWords.length === 0) {
-    return
-  }
-
-  const rows = privateWords.map((wordRow) => {
-    const userId = seatToUserId.get(Number(wordRow.playerId))
-    if (!userId) {
-      throw new Error(`Unable to map player ${wordRow.playerId} to a room seat.`)
-    }
-
-    return {
-      room_id: roomId,
-      hand_number: handNumber,
-      player_id: wordRow.playerId,
-      user_id: userId,
-      word: wordRow.word,
-      is_revealed: false,
-    }
-  })
-
-  const { error: insertError } = await serviceClient.from('hand_words').insert(rows)
-  if (insertError) throw new Error(insertError.message)
 }
 
 function hasDealablePlayers(game: any) {
@@ -847,8 +733,6 @@ Deno.serve(async (req) => {
 
     const isHost = room.host_user_id === user.id
     const stateJson = roomState.state_json
-    const rng = randomFloat
-    const dealingMode = getDealingMode()
     let nextGame: any
     let nextStatus: string | null = null
     let replaceWords = false
@@ -868,7 +752,6 @@ Deno.serve(async (req) => {
           startingStack: payload.startingStack ?? STARTING_STACK,
           ante: payload.ante ?? ANTE,
           bigBlind: payload.bigBlind ?? MIN_BET,
-          rng,
         })
       })
       nextStatus = 'playing'
@@ -937,7 +820,7 @@ Deno.serve(async (req) => {
         }
 
         nextGame = measureSyncStage(timings, 'stateTransition', () => {
-          return startNextHand(fullGame, { rng })
+          return startNextHand(fullGame)
         })
         replaceWords = true
       } else if (command === 'startNewGame') {
@@ -951,7 +834,6 @@ Deno.serve(async (req) => {
             startingStack: payload.startingStack ?? STARTING_STACK,
             ante: payload.ante ?? ANTE,
             bigBlind: payload.bigBlind ?? MIN_BET,
-            rng,
           })
         })
         replaceWords = true
@@ -962,7 +844,7 @@ Deno.serve(async (req) => {
 
     let saved
 
-    if (replaceWords && dealingMode === 'database-only' && hasDealablePlayers(nextGame)) {
+    if (replaceWords && hasDealablePlayers(nextGame)) {
       if (nextGame.phase !== 'preflop') {
         throw new Error('Catalog dealing cannot persist a hand that already advanced beyond preflop.')
       }
@@ -978,12 +860,6 @@ Deno.serve(async (req) => {
         })
       })
     } else {
-      if (replaceWords) {
-        await measureStage(timings, 'legacyWordPersistence', () => {
-          return replacePrivateHandWords(serviceClient, roomId, nextGame, roomPlayers)
-        })
-      }
-
       saved = await measureStage(timings, 'persistence', () => {
         return saveGameState({
           serviceClient,

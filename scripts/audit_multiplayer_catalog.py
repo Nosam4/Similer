@@ -9,12 +9,12 @@ from pathlib import Path
 
 from gensim.models import KeyedVectors
 
-from generate_word_matrix import WORD_PATTERN
 from generate_multiplayer_catalog import (
     DEFAULT_EXCLUSIONS_PATH,
     PREFERRED_PACK_PATHS,
     read_word_file,
 )
+from word_catalog_filters import WORD_PATTERN
 
 
 DEFAULT_MODEL_PATH = Path("~/Downloads/word2vec-google-news-300.gz").expanduser()

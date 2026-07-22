@@ -1,4 +1,3 @@
-import matrixData from './matrix.json' with { type: 'json' }
 import { getServerSimilarityScore } from './serverSimilarityScores.js'
 import { getServerNeutralJudgeWord } from './serverWordDeal.js'
 
@@ -20,23 +19,8 @@ const ACTIVE_JUDGE_TAX_RATE = 0.2
 const FOLDED_JUDGE_TAX_RATE = 0.1
 const FALLBACK_PLAYER_NAMES = ['North', 'East', 'South', 'West', 'Alpha', 'Bravo', 'Charlie', 'Delta']
 
-const WORDS = matrixData.words
-const SCORES = matrixData.scores
-const WORD_INDEX_BY_WORD = new Map(WORDS.map((word, index) => [word, index]))
-
 function deepClone(value) {
   return structuredClone(value)
-}
-
-function shuffle(items, rng = Math.random) {
-  const copy = [...items]
-
-  for (let index = copy.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(rng() * (index + 1))
-    ;[copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]]
-  }
-
-  return copy
 }
 
 function nextSeat(players, fromIndex, predicate) {
@@ -186,15 +170,15 @@ function getSimilarityScoreForPlayerId(state, playerId) {
   const player = state.players.find((candidate) => candidate.id === playerId)
 
   if (!player || !state.judgeWord) {
-    return Number.NEGATIVE_INFINITY
+    throw new Error('Database similarity scoring requires a valid player and Judge word.')
   }
 
   const serverScore = getServerSimilarityScore(state, playerId)
-  if (serverScore !== null) {
-    return serverScore
+  if (!Number.isFinite(serverScore)) {
+    throw new Error(`Database similarity score is unavailable for player ${playerId}.`)
   }
 
-  return getSimilarityScore(player.holeWord, state.judgeWord)
+  return serverScore
 }
 
 function getSimilarityScoreStatus(player) {
@@ -241,14 +225,18 @@ function buildAllSimilarityScores(state) {
     })
 }
 
-function chooseSidePotWinner(state, pot, rankedPlayerIds) {
+function chooseSidePotWinner(state, pot, rankedPlayerIds, includeSimilarityScores = true) {
+  const getWinningSimilarity = (playerId) => {
+    return includeSimilarityScores ? getSimilarityScoreForPlayerId(state, playerId) : null
+  }
+
   if (pot.id === 1) {
     const winnerId = chooseMainPotWinnerId(pot, rankedPlayerIds)
 
     return {
       winnerId,
       awardRule: 'main-showdown',
-      winningSimilarity: getSimilarityScoreForPlayerId(state, winnerId),
+      winningSimilarity: getWinningSimilarity(winnerId),
     }
   }
 
@@ -258,11 +246,15 @@ function chooseSidePotWinner(state, pot, rankedPlayerIds) {
     return {
       winnerId,
       awardRule: 'only-eligible',
-      winningSimilarity: getSimilarityScoreForPlayerId(state, winnerId),
+      winningSimilarity: getWinningSimilarity(winnerId),
     }
   }
 
   if (pot.eligiblePlayerIds.length > 1 && state.judgeWord) {
+    if (!includeSimilarityScores) {
+      throw new Error('Database similarity scores are required to resolve a contested side pot.')
+    }
+
     const winnerId = rankContenderIdsBy(state, pot.eligiblePlayerIds, (playerId) => {
       return getSimilarityScoreForPlayerId(state, playerId)
     })[0]
@@ -279,7 +271,7 @@ function chooseSidePotWinner(state, pot, rankedPlayerIds) {
   return {
     winnerId,
     awardRule: 'showdown-fallback',
-    winningSimilarity: getSimilarityScoreForPlayerId(state, winnerId),
+    winningSimilarity: getWinningSimilarity(winnerId),
   }
 }
 
@@ -297,6 +289,7 @@ function settlePotsByRanking(state, rankedPlayerIds, options = {}) {
     judgeStakeRefund = 0,
     judgeBonus = 0,
     judgePayout = 0,
+    includeSimilarityScores = true,
   } = options
 
   reserveJudgePayoutFromPots(sidePots, judgePlayerId, judgeStakeRefund, judgeBonus)
@@ -306,7 +299,7 @@ function settlePotsByRanking(state, rankedPlayerIds, options = {}) {
   }
 
   for (const pot of sidePots) {
-    const award = chooseSidePotWinner(state, pot, rankedPlayerIds)
+    const award = chooseSidePotWinner(state, pot, rankedPlayerIds, includeSimilarityScores)
     const winningPlayerId = award.winnerId
 
     if (pot.amount <= 0) {
@@ -650,34 +643,17 @@ function getSeatIndexByPlayerId(state) {
   return lookup
 }
 
-function getSimilarityScore(playerWord, judgeWord) {
-  const playerWordIndex = WORD_INDEX_BY_WORD.get(playerWord)
-  const judgeWordIndex = WORD_INDEX_BY_WORD.get(judgeWord)
-
-  if (playerWordIndex === undefined || judgeWordIndex === undefined) {
-    return Number.NEGATIVE_INFINITY
-  }
-
-  return SCORES[playerWordIndex]?.[judgeWordIndex] ?? Number.NEGATIVE_INFINITY
-}
-
 function formatLogScore(score) {
   return Number.isFinite(score) ? score.toFixed(2) : '--'
 }
 
-export function drawNeutralJudgeWord(state, rng = Math.random) {
+export function drawNeutralJudgeWord(state) {
   const reservedWord = getServerNeutralJudgeWord(state)
   if (reservedWord) {
     return reservedWord
   }
 
-  const usedWords = new Set(
-    state.players.map((player) => player.holeWord).filter((word) => word),
-  )
-  const availableWords = WORDS.filter((word) => !usedWords.has(word))
-  const pool = availableWords.length > 0 ? availableWords : WORDS
-
-  return pool[Math.floor(rng() * pool.length)]
+  throw new Error('Database reserved neutral Judge word is unavailable.')
 }
 
 function toCategoryLabel(categoryKey) {
@@ -773,6 +749,7 @@ function settleUncontestedPot(state) {
     judgeStakeRefund,
     judgeBonus: 0,
     judgePayout: judgeStakeRefund,
+    includeSimilarityScores: false,
   })
   const potAmount = settlement.payoutByPlayerId.get(winner.id) ?? 0
 
@@ -796,7 +773,7 @@ function settleUncontestedPot(state) {
       : null,
     payouts: settlement.payouts,
     sidePots: settlement.sidePots,
-    allSimilarityScores: buildAllSimilarityScores(state),
+    allSimilarityScores: [],
   }
 
   state.handComplete = true
@@ -1423,7 +1400,7 @@ function applyAllIn(state, player, actorIndex) {
   addLog(state, `${player.name} moves all-in to ${state.currentBet}.`)
 }
 
-function setUpNewHand(state, rng = Math.random) {
+function setUpNewHand(state) {
   state.handNumber += 1
   state.phase = 'preflop'
   state.handComplete = false
@@ -1479,16 +1456,6 @@ function setUpNewHand(state, rng = Math.random) {
   state.dealerIndex = dealerIndex
 
   const preflopFirstActor = nextSeat(state.players, dealerIndex, (player) => player.inHand)
-
-  const shuffledWords = shuffle(WORDS, rng)
-  let wordCursor = 0
-
-  for (const player of state.players) {
-    if (player.inHand) {
-      player.holeWord = shuffledWords[wordCursor]
-      wordCursor += 1
-    }
-  }
 
   for (const player of state.players) {
     if (!player.inHand) {
@@ -1767,7 +1734,6 @@ export function createInitialGame(options = {}) {
     startingStack = 400,
     bigBlind = 10,
     ante = bigBlind,
-    rng = Math.random,
   } = options
 
   const cleanNames = playerNames
@@ -1804,12 +1770,12 @@ export function createInitialGame(options = {}) {
     log: [],
   }
 
-  return setUpNewHand(state, rng)
+  return setUpNewHand(state)
 }
 
-export function startNextHand(previousState, options = {}) {
+export function startNextHand(previousState) {
   const state = deepClone(previousState)
-  return setUpNewHand(state, options.rng)
+  return setUpNewHand(state)
 }
 
 export function applyPlayerAction(previousState, action, amount) {
@@ -2237,12 +2203,4 @@ export function getPotSummary(state) {
     minRaise: state.minRaise,
     ante: getAnteAmount(state),
   }
-}
-
-export function getSimilarityForWords(playerWord, judgeWord) {
-  return getSimilarityScore(playerWord, judgeWord)
-}
-
-export function getWordBankSize() {
-  return WORDS.length
 }

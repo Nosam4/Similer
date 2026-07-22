@@ -10,7 +10,7 @@ from pathlib import Path
 
 from gensim.models import KeyedVectors
 
-from generate_word_matrix import BLOCKLIST, STOPWORDS, WORD_PATTERN, is_playable_word
+from word_catalog_filters import BLOCKLIST, STOPWORDS, WORD_PATTERN, is_playable_word
 
 
 DEFAULT_MODEL_PATH = Path("~/Downloads/word2vec-google-news-300.gz").expanduser()

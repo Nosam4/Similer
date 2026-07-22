@@ -24,8 +24,6 @@ word2vec-google-news-300*
 *.bin
 *.bin.gz
 
-# Server-only game answer key used by the Supabase Edge Function.
-supabase/functions/_shared/wordgame/matrix.json
 supabase/.private/
 supabase/.temp/
 

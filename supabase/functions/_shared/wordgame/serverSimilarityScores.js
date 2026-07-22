@@ -76,5 +76,5 @@ export function getServerSimilarityScore(game, playerId) {
   }
 
   const score = Number(scores[String(playerId)])
-  return Number.isFinite(score) ? score : Number.NEGATIVE_INFINITY
+  return Number.isFinite(score) ? score : null
 }
