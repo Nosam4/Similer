@@ -1,7 +1,11 @@
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient'
+import { shouldRetryGameCommand } from './commandRetry'
 
 const DEFAULT_DISPLAY_NAME = 'Player'
 const MAX_DISPLAY_NAME_LENGTH = 8
+const GAME_COMMAND_TIMEOUT_MS = 12_000
+const GAME_COMMAND_MAX_ATTEMPTS = 3
+const GAME_COMMAND_RETRY_DELAYS_MS = [250, 750]
 
 function getSupabaseClient() {
   if (!isSupabaseConfigured || !supabase) {
@@ -186,6 +190,55 @@ export async function fetchRoomState(roomId) {
   return response.data
 }
 
+export async function fetchRoomStateVersion(roomId) {
+  const client = getSupabaseClient()
+  const response = await client
+    .from('room_states')
+    .select('version')
+    .eq('room_id', roomId)
+    .maybeSingle()
+
+  if (response.error) {
+    throw new Error(response.error.message)
+  }
+
+  return response.data?.version ?? null
+}
+
+function waitForRetry(delayMs) {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, delayMs)
+  })
+}
+
+async function getFunctionErrorDetails(error) {
+  const context = error?.context
+  let message = error?.message || 'Game command failed.'
+  let status = Number(context?.status ?? error?.status ?? 0)
+
+  if (context && typeof context.clone === 'function') {
+    try {
+      const errorBody = await context.clone().json()
+      message = errorBody?.error ?? errorBody?.message ?? message
+      status = Number(context.status ?? status)
+    } catch {
+      try {
+        const errorText = await context.clone().text()
+        message = errorText || message
+        status = Number(context.status ?? status)
+      } catch {
+        // Preserve the Supabase client error when the response body is unreadable.
+      }
+    }
+  }
+
+  return {
+    message,
+    name: String(error?.name ?? ''),
+    status,
+  }
+}
+
 export async function invokeGameCommand({
   roomId,
   command,
@@ -193,45 +246,66 @@ export async function invokeGameCommand({
   commandId = globalThis.crypto.randomUUID(),
 }) {
   const client = getSupabaseClient()
-  const response = await client.functions.invoke('game-action', {
-    body: {
-      roomId,
-      command,
-      commandId,
-      payload,
-    },
-  })
+  const startedAt = globalThis.performance?.now?.() ?? Date.now()
 
-  if (response.error) {
-    const context = response.error.context
-    let message = response.error.message
+  for (let attempt = 1; attempt <= GAME_COMMAND_MAX_ATTEMPTS; attempt += 1) {
+    const response = await client.functions.invoke('game-action', {
+      body: {
+        roomId,
+        command,
+        commandId,
+        payload,
+      },
+      timeout: GAME_COMMAND_TIMEOUT_MS,
+    })
 
-    if (context && typeof context.clone === 'function') {
-      try {
-        const errorBody = await context.clone().json()
-        message = errorBody?.error ?? errorBody?.message ?? message
-      } catch {
-        try {
-          const errorText = await context.clone().text()
-          message = errorText || message
-        } catch {
-          // Keep the Supabase client message if the response body cannot be read.
-        }
-      }
+    if (!response.error && !response.data?.error && response.data?.roomState) {
+      const finishedAt = globalThis.performance?.now?.() ?? Date.now()
+      console.info(JSON.stringify({
+        event: 'game_command_client',
+        command,
+        status: 'accepted',
+        attempts: attempt,
+        durationMs: Math.round((finishedAt - startedAt) * 10) / 10,
+      }))
+      return response.data
     }
 
-    throw new Error(message)
+    const errorDetails = response.error
+      ? await getFunctionErrorDetails(response.error)
+      : {
+          message:
+            response.data?.error ??
+            'Game command did not return an updated room state.',
+          name: '',
+          status: 0,
+        }
+
+    if (!shouldRetryGameCommand({ command, errorDetails, attempt })) {
+      const finishedAt = globalThis.performance?.now?.() ?? Date.now()
+      console.error(JSON.stringify({
+        event: 'game_command_client',
+        command,
+        status: 'rejected',
+        attempts: attempt,
+        durationMs: Math.round((finishedAt - startedAt) * 10) / 10,
+        errorType: errorDetails.name || `http_${errorDetails.status || 'unknown'}`,
+      }))
+      throw new Error(errorDetails.message)
+    }
+
+    console.warn(JSON.stringify({
+      event: 'game_command_retry',
+      command,
+      attempt,
+      reason: /Room state changed on another device/i.test(errorDetails.message)
+        ? 'version_conflict'
+        : 'transport',
+    }))
+    await waitForRetry(GAME_COMMAND_RETRY_DELAYS_MS[attempt - 1] ?? 750)
   }
 
-  if (response.data?.error) {
-    throw new Error(response.data.error)
-  }
-
-  if (!response.data?.roomState) {
-    throw new Error('Game command did not return an updated room state.')
-  }
-
-  return response.data
+  throw new Error('Game command failed after retrying.')
 }
 
 export async function setReady({ roomId, userId, isReady }) {
@@ -306,6 +380,7 @@ export function subscribeToRoom({
   onRoomStateChange = null,
   onPrivateChange = null,
   onStatusChange = null,
+  onHeartbeat = null,
 }) {
   const client = getSupabaseClient()
   const ignoreChange = () => {}
@@ -313,6 +388,9 @@ export function subscribeToRoom({
   const handlePlayerChange = onPlayerChange ?? onAnyChange ?? ignoreChange
   const handleRoomStateChange = onRoomStateChange ?? onAnyChange ?? ignoreChange
   const handlePrivateChange = onPrivateChange ?? onAnyChange ?? ignoreChange
+  if (onHeartbeat) {
+    client.realtime.onHeartbeat(onHeartbeat)
+  }
   const channel = client
     .channel(`room-${roomId}`)
     .on(
@@ -370,6 +448,9 @@ export function subscribeToRoom({
     })
 
   return () => {
+    if (onHeartbeat) {
+      client.realtime.onHeartbeat(() => {})
+    }
     client.removeChannel(channel)
   }
 }

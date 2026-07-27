@@ -6,6 +6,7 @@ import {
   fetchRoom,
   fetchRoomPlayers,
   fetchRoomState,
+  fetchRoomStateVersion,
   joinRoomByCode,
   leaveRoom,
   normalizeRoomCode,
@@ -24,6 +25,11 @@ const DISPLAY_NAME_STORAGE_KEY = 'similer.displayName'
 const ROOM_CODE_STORAGE_KEY = 'similer.roomCode'
 const MISSING_DISPLAY_NAME_ERROR = 'Enter your name to start.'
 const DISCONNECTED_REFRESH_INTERVAL_MS = 10_000
+const ACTIVE_GAME_VERSION_POLL_INTERVAL_MS = 2_500
+const REALTIME_WATCHDOG_INTERVAL_MS = 5_000
+const REALTIME_HEARTBEAT_STALE_MS = 65_000
+const ROOM_EVENT_STALE_MS = 15_000
+const REALTIME_RECONNECT_DELAY_MS = 400
 
 function readRememberedDisplayName() {
   if (typeof window === 'undefined') {
@@ -105,7 +111,18 @@ function OnlineRoomPanel({
   const [errorText, setErrorText] = useState('')
   const [booting, setBooting] = useState(isSupabaseConfigured && !initialSession?.userId)
   const [refreshTick, setRefreshTick] = useState(0)
+  const [connectionStatus, setConnectionStatus] = useState('reconnecting')
   const displayNameInputRef = useRef(null)
+  const roomStateVersionRef = useRef(roomState?.version ?? null)
+  const roomStatusRef = useRef(room?.status ?? null)
+
+  useEffect(() => {
+    roomStateVersionRef.current = roomState?.version ?? null
+  }, [roomState?.version])
+
+  useEffect(() => {
+    roomStatusRef.current = room?.status ?? null
+  }, [room?.status])
 
   useEffect(() => {
     if (!isSupabaseConfigured || userId) {
@@ -152,11 +169,46 @@ function OnlineRoomPanel({
     let refreshQueued = false
     let queuedRefreshIsSilent = true
     let realtimeStatus = 'CONNECTING'
+    let versionRefreshInFlight = false
+    let realtimeMissedState = false
+    let reconnectTimerId = null
+    let reconnectScheduled = false
+    let lastDisconnectedRefreshAt = 0
+    let lastHeartbeatAt = Date.now()
+    let lastRoomStateEventAt = Date.now()
+
+    function setConnectionMode(nextStatus) {
+      if (isMounted) {
+        setConnectionStatus(nextStatus)
+      }
+    }
+
+    function realtimeIsHealthy() {
+      return (
+        realtimeStatus === 'SUBSCRIBED' &&
+        Date.now() - lastHeartbeatAt < REALTIME_HEARTBEAT_STALE_MS
+      )
+    }
+
+    function getHealthyConnectionMode() {
+      return realtimeIsHealthy() && !realtimeMissedState ? 'live' : 'polling'
+    }
+
+    function markRealtimeEvent({ roomStateEvent = false } = {}) {
+      if (roomStateEvent) {
+        lastRoomStateEventAt = Date.now()
+        realtimeMissedState = false
+      }
+      if (realtimeIsHealthy()) {
+        setConnectionMode(getHealthyConnectionMode())
+      }
+    }
 
     function clearRoom() {
       setRoom(null)
       setPlayers([])
       setRoomState(null)
+      setConnectionMode('reconnecting')
       rememberRoomCode('')
     }
 
@@ -176,6 +228,8 @@ function OnlineRoomPanel({
         clearRoom()
         return
       }
+
+      markRealtimeEvent()
 
       if (payload?.new?.id === room.id) {
         setRoom((previous) => {
@@ -197,6 +251,8 @@ function OnlineRoomPanel({
       if (!changedPlayer?.user_id) {
         return
       }
+
+      markRealtimeEvent()
 
       setPlayers((previous) => {
         const withoutChangedPlayer = previous.filter(
@@ -224,6 +280,7 @@ function OnlineRoomPanel({
       }
 
       if (payload?.new?.room_id === room.id) {
+        markRealtimeEvent({ roomStateEvent: true })
         setRoomState((previous) => {
           return Number(previous?.version) > Number(payload.new.version) ? previous : payload.new
         })
@@ -274,6 +331,7 @@ function OnlineRoomPanel({
                 ? previous
                 : nextRoomState
             })
+            setConnectionMode(getHealthyConnectionMode())
             setErrorText('')
           } catch (error) {
             if (!isMounted) {
@@ -292,29 +350,141 @@ function OnlineRoomPanel({
       }
     }
 
+    async function refreshActiveRoomStateVersion() {
+      if (
+        !isMounted ||
+        roomStatusRef.current !== 'playing' ||
+        versionRefreshInFlight
+      ) {
+        return
+      }
+
+      versionRefreshInFlight = true
+      try {
+        const remoteVersion = await fetchRoomStateVersion(room.id)
+        if (!isMounted) {
+          return
+        }
+
+        const localVersion = Number(roomStateVersionRef.current ?? 0)
+        const numericRemoteVersion = Number(remoteVersion ?? 0)
+
+        if (numericRemoteVersion > localVersion) {
+          realtimeMissedState = true
+          setConnectionMode('polling')
+          const nextRoomState = await fetchRoomState(room.id)
+          if (!isMounted) {
+            return
+          }
+
+          setRoomState((previous) => {
+            return Number(previous?.version) > Number(nextRoomState?.version)
+              ? previous
+              : nextRoomState
+          })
+          scheduleRealtimeReconnect({ refresh: false })
+        }
+
+        setConnectionMode(getHealthyConnectionMode())
+      } catch {
+        setConnectionMode('reconnecting')
+      } finally {
+        versionRefreshInFlight = false
+      }
+    }
+
+    function scheduleRealtimeReconnect({ refresh = true } = {}) {
+      if (!isMounted) {
+        return
+      }
+
+      setConnectionMode('reconnecting')
+      if (refresh) {
+        refreshRoomState({ silent: true })
+      }
+
+      if (reconnectScheduled) {
+        return
+      }
+
+      reconnectScheduled = true
+      reconnectTimerId = window.setTimeout(() => {
+        if (isMounted) {
+          setRefreshTick((previous) => previous + 1)
+        }
+      }, REALTIME_RECONNECT_DELAY_MS)
+    }
+
     const unsubscribe = subscribeToRoom({
       roomId: room.id,
       onRoomChange: applyRoomChange,
       onPlayerChange: applyPlayerChange,
       onRoomStateChange: applyRoomStateChange,
-      onPrivateChange: onPrivateDataChange,
+      onPrivateChange: (...args) => {
+        markRealtimeEvent()
+        onPrivateDataChange?.(...args)
+      },
       onStatusChange: (status) => {
         realtimeStatus = status
 
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          refreshRoomState({ silent: true })
+        if (status === 'SUBSCRIBED') {
+          lastHeartbeatAt = Date.now()
+          setConnectionMode(getHealthyConnectionMode())
+        } else if (
+          status === 'CHANNEL_ERROR' ||
+          status === 'TIMED_OUT' ||
+          status === 'CLOSED'
+        ) {
+          scheduleRealtimeReconnect()
+        }
+      },
+      onHeartbeat: (status) => {
+        if (status === 'ok') {
+          lastHeartbeatAt = Date.now()
+          if (realtimeStatus === 'SUBSCRIBED') {
+            setConnectionMode(getHealthyConnectionMode())
+          }
+        } else if (status === 'error' || status === 'timeout' || status === 'disconnected') {
+          scheduleRealtimeReconnect()
         }
       },
     })
-    const intervalId = window.setInterval(() => {
-      if (realtimeStatus !== 'SUBSCRIBED') {
+    const activeGamePollId = window.setInterval(() => {
+      refreshActiveRoomStateVersion()
+    }, ACTIVE_GAME_VERSION_POLL_INTERVAL_MS)
+    const watchdogId = window.setInterval(() => {
+      const now = Date.now()
+
+      if (
+        roomStatusRef.current === 'playing' &&
+        (now - lastHeartbeatAt >= REALTIME_HEARTBEAT_STALE_MS ||
+          realtimeStatus !== 'SUBSCRIBED')
+      ) {
+        scheduleRealtimeReconnect()
+        return
+      }
+
+      if (
+        roomStatusRef.current === 'playing' &&
+        now - lastRoomStateEventAt >= ROOM_EVENT_STALE_MS
+      ) {
+        refreshActiveRoomStateVersion()
+      }
+
+      if (
+        roomStatusRef.current !== 'playing' &&
+        realtimeStatus !== 'SUBSCRIBED' &&
+        now - lastDisconnectedRefreshAt >= DISCONNECTED_REFRESH_INTERVAL_MS
+      ) {
+        lastDisconnectedRefreshAt = now
         refreshRoomState({ silent: true })
       }
-    }, DISCONNECTED_REFRESH_INTERVAL_MS)
+    }, REALTIME_WATCHDOG_INTERVAL_MS)
 
     function refreshWhenVisible() {
       if (document.visibilityState === 'visible') {
         refreshRoomState({ silent: true })
+        refreshActiveRoomStateVersion()
       }
     }
 
@@ -325,7 +495,11 @@ function OnlineRoomPanel({
 
     return () => {
       isMounted = false
-      window.clearInterval(intervalId)
+      window.clearInterval(activeGamePollId)
+      window.clearInterval(watchdogId)
+      if (reconnectTimerId !== null) {
+        window.clearTimeout(reconnectTimerId)
+      }
       window.removeEventListener('focus', refreshWhenVisible)
       document.removeEventListener('visibilitychange', refreshWhenVisible)
       unsubscribe()
@@ -367,6 +541,12 @@ function OnlineRoomPanel({
   }, [players, room?.max_players])
   const isRoomPlaying = room?.status === 'playing'
   const roomSeatCount = `${players.length}/${room?.max_players ?? MAX_ROOM_PLAYERS}`
+  const connectionLabel =
+    connectionStatus === 'live'
+      ? 'Live'
+      : connectionStatus === 'polling'
+        ? 'Polling'
+        : 'Reconnecting'
 
   function getRequiredDisplayName() {
     const trimmedName = sanitizeDisplayNameInput(displayName)
@@ -411,6 +591,7 @@ function OnlineRoomPanel({
       setRoom(nextRoom)
       setPlayers(nextPlayers)
       setRoomState(nextRoomState)
+      setConnectionStatus('reconnecting')
       setDisplayName(trimmedName)
       rememberDisplayName(trimmedName)
       rememberRoomCode(nextRoom?.code)
@@ -443,6 +624,7 @@ function OnlineRoomPanel({
       setRoom(nextRoom)
       setPlayers(nextPlayers)
       setRoomState(nextRoomState)
+      setConnectionStatus('reconnecting')
       setDisplayName(trimmedName)
       rememberDisplayName(trimmedName)
       rememberRoomCode(nextRoom?.code)
@@ -493,6 +675,7 @@ function OnlineRoomPanel({
       setRoom(null)
       setRoomState(null)
       setPlayers([])
+      setConnectionStatus('reconnecting')
       setRoomCodeInput(reconnectCode)
       rememberRoomCode(reconnectCode)
     } catch (error) {
@@ -562,6 +745,17 @@ function OnlineRoomPanel({
         {room ? (
           <span className="online-room-code">
             Code <b>{room.code}</b>
+          </span>
+        ) : null}
+
+        {room ? (
+          <span
+            className={`online-room-connection online-room-connection--${connectionStatus}`}
+            title="Multiplayer synchronization status and room-state version"
+            role="status"
+          >
+            <span className="online-room-connection-dot" aria-hidden="true" />
+            {connectionLabel} · v{roomState?.version ?? '—'}
           </span>
         ) : null}
 
@@ -676,6 +870,9 @@ function OnlineRoomPanel({
             <b>
               {players.length}/{room.max_players}
             </b>
+          </p>
+          <p className="online-room-connection-detail" role="status">
+            Sync: <b>{connectionLabel}</b> · State version <b>{roomState?.version ?? '—'}</b>
           </p>
           <div className="online-room-actions">
             {!isRoomPlaying ? (

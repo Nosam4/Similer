@@ -11,6 +11,7 @@ Multiplayer now deals words and calculates similarity exclusively in Supabase. T
 - `public.score_hand_word_similarities` calculates only Judge-to-hand cosine similarities.
 - The Edge Function accepts a score set only when every dealt player has one finite result. Missing or partial database data rejects the resolving command without advancing the room.
 - The transient score map is removed before `room_states.state_json` is saved; final public showdown data contains only the completed score report.
+- Authoritative state changes and their successful idempotency receipts are committed in one database transaction, including catalog-dealing commands.
 
 No `DEALING_MODE` or `SIMILARITY_MODE` setting is used. New multiplayer hands always use database catalog dealing, and contested showdowns always require database scores.
 

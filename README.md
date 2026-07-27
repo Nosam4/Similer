@@ -82,7 +82,11 @@ The online flow includes:
 - Anonymous Supabase auth.
 - Create and join rooms by code.
 - Live seat and ready-state sync.
+- Realtime heartbeat monitoring with a lightweight room-version polling fallback.
+- Visible `Live`, `Polling`, or `Reconnecting` status with the current state version.
 - Server-authoritative gameplay actions through the `game-action` Edge Function.
+- Same-command-id timeout retries and safe argument-conflict recovery.
+- Transactional state persistence and successful-command receipts.
 - Private hand words stored separately from public room state.
 - Showdown vote status sync without exposing vote targets early.
 

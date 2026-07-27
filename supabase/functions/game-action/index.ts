@@ -390,14 +390,20 @@ function hasDealablePlayers(game: any) {
 async function persistCatalogHand({
   serviceClient,
   roomId,
-  userId,
+  actorUserId,
+  commandId,
+  command,
+  payload,
   expectedVersion,
   nextGame,
   nextStatus,
 }: {
   serviceClient: any
   roomId: string
-  userId: string
+  actorUserId: string
+  commandId: string
+  command: string
+  payload: any
   expectedVersion: number
   nextGame: any
   nextStatus: string | null
@@ -406,100 +412,81 @@ async function persistCatalogHand({
     .filter((player: any) => player.inHand)
     .map((player: any) => Number(player.id))
   const stateToSave = sanitizeGameForRoomState(nextGame)
-  const response = await serviceClient.rpc('deal_catalog_hand', {
+  const response = await serviceClient.rpc('deal_catalog_hand_and_record_action', {
     p_room_id: roomId,
     p_hand_number: Number(nextGame.handNumber),
     p_expected_version: Number(expectedVersion),
     p_player_ids: playerIds,
     p_state_json: stateToSave,
-    p_updated_by: userId,
+    p_updated_by: actorUserId,
     p_next_status: nextStatus,
     p_embedding_model: 'word2vec-google-news-300',
+    p_actor_user_id: actorUserId,
+    p_command_id: commandId,
+    p_action_type: command,
+    p_payload: payload ?? {},
   })
 
   if (response.error) {
     throw new Error(`Database catalog dealing failed: ${response.error.message}`)
   }
 
-  if (!response.data?.roomState || !response.data?.room) {
+  if (!response.data?.response?.roomState || !response.data?.response?.room) {
     throw new Error('Database catalog dealing returned an incomplete room result.')
   }
 
   return {
-    roomState: response.data.roomState,
-    room: response.data.room,
-  }
-}
-
-async function revealPublicWords(serviceClient: any, roomId: string, game: any) {
-  const publicPlayerIds = getPublicRevealPlayerIds(game)
-
-  if (publicPlayerIds.length === 0) {
-    return
-  }
-
-  const { error } = await serviceClient
-    .from('hand_words')
-    .update({ is_revealed: true })
-    .eq('room_id', roomId)
-    .eq('hand_number', Number(game.handNumber))
-    .in('player_id', publicPlayerIds)
-
-  if (error) {
-    throw new Error(error.message)
+    ...response.data.response,
+    replayed: Boolean(response.data.replayed),
   }
 }
 
 async function saveGameState({
   serviceClient,
   roomId,
-  userId,
+  actorUserId,
+  commandId,
+  command,
+  payload,
   expectedVersion,
   nextGame,
   nextStatus = null,
 }: {
   serviceClient: any
   roomId: string
-  userId: string
+  actorUserId: string
+  commandId: string
+  command: string
+  payload: any
   expectedVersion: number
   nextGame: any
   nextStatus?: string | null
 }) {
   const stateToSave = sanitizeGameForRoomState(nextGame)
+  const response = await serviceClient.rpc('commit_game_action', {
+    p_room_id: roomId,
+    p_actor_user_id: actorUserId,
+    p_command_id: commandId,
+    p_action_type: command,
+    p_payload: payload ?? {},
+    p_expected_version: Number(expectedVersion),
+    p_state_json: stateToSave,
+    p_updated_by: actorUserId,
+    p_next_status: nextStatus,
+    p_public_reveal_player_ids: getPublicRevealPlayerIds(nextGame),
+  })
 
-  const { data: savedRoomState, error: saveError } = await serviceClient
-    .from('room_states')
-    .update({
-      version: Number(expectedVersion) + 1,
-      state_json: stateToSave,
-      updated_by: userId,
-    })
-    .eq('room_id', roomId)
-    .eq('version', expectedVersion)
-    .select('room_id, version, state_json, updated_by, updated_at')
-    .maybeSingle()
-
-  if (saveError) throw new Error(saveError.message)
-  if (!savedRoomState) throw new Error('Room state changed on another device. Please try again.')
-
-  let savedRoom = null
-  if (nextStatus) {
-    const { data: room, error: roomError } = await serviceClient
-      .from('rooms')
-      .update({ status: nextStatus })
-      .eq('id', roomId)
-      .select('id, code, host_user_id, status, max_players, created_at, updated_at')
-      .maybeSingle()
-
-    if (roomError) throw new Error(roomError.message)
-    savedRoom = room
+  if (response.error) {
+    throw new Error(`Database game action persistence failed: ${response.error.message}`)
   }
 
-  await revealPublicWords(serviceClient, roomId, nextGame)
+  if (!response.data?.response?.roomState || !response.data?.response?.room) {
+    throw new Error('Database game action persistence returned an incomplete room result.')
+  }
 
   return {
-    roomState: savedRoomState,
-    room: savedRoom,
+    ...response.data.response,
+    replayed: Boolean(response.data.replayed),
   }
 }
 
@@ -559,64 +546,6 @@ async function fetchSuccessfulCommandReceipt(
   }
 
   return data ?? null
-}
-
-async function recordSuccessfulCommand({
-  serviceClient,
-  roomId,
-  actorUserId,
-  commandId,
-  command,
-  payload,
-  responseBody,
-  versionBefore,
-  versionAfter,
-}: {
-  serviceClient: any
-  roomId: string
-  actorUserId: string
-  commandId: string
-  command: string
-  payload: any
-  responseBody: any
-  versionBefore: number
-  versionAfter: number
-}) {
-  const { error } = await serviceClient.from('room_actions').insert({
-    room_id: roomId,
-    actor_user_id: actorUserId,
-    action_type: command,
-    payload: payload ?? {},
-    accepted: true,
-    error_text: null,
-    version_before: versionBefore,
-    version_after: versionAfter,
-    command_id: commandId,
-    response_json: responseBody,
-  })
-
-  if (!error) {
-    return responseBody
-  }
-
-  if (error.code === '23505') {
-    const priorReceipt = await fetchSuccessfulCommandReceipt(
-      serviceClient,
-      roomId,
-      actorUserId,
-      commandId,
-    )
-
-    if (priorReceipt?.response_json) {
-      if (priorReceipt.action_type !== command) {
-        throw new Error('Command id was already used for another command.')
-      }
-
-      return priorReceipt.response_json
-    }
-  }
-
-  throw new Error(`Unable to record command receipt: ${error.message}`)
 }
 
 async function recordRejectedCommand({
@@ -853,7 +782,10 @@ Deno.serve(async (req) => {
         return persistCatalogHand({
           serviceClient,
           roomId,
-          userId: user.id,
+          actorUserId,
+          commandId,
+          command,
+          payload,
           expectedVersion: Number(roomState.version),
           nextGame,
           nextStatus,
@@ -864,7 +796,10 @@ Deno.serve(async (req) => {
         return saveGameState({
           serviceClient,
           roomId,
-          userId: user.id,
+          actorUserId,
+          commandId,
+          command,
+          payload,
           expectedVersion: Number(roomState.version),
           nextGame,
           nextStatus,
@@ -876,28 +811,15 @@ Deno.serve(async (req) => {
       roomState: saved.roomState,
       room: saved.room ?? room,
     }
-    const finalResponseBody = await measureStage(timings, 'commandReceipt', () => {
-      return recordSuccessfulCommand({
-        serviceClient,
-        roomId,
-        actorUserId,
-        commandId,
-        command,
-        payload,
-        responseBody,
-        versionBefore: Number(roomState.version),
-        versionAfter: Number(saved.roomState.version),
-      })
-    })
 
     logCommandResult({
       command,
-      replayed: finalResponseBody !== responseBody,
+      replayed: saved.replayed,
       startedAt: requestStartedAt,
       status: 'accepted',
       timings,
     })
-    return jsonResponse(finalResponseBody)
+    return jsonResponse(responseBody)
   } catch (error) {
     const errorCode = classifyCommandError(error)
 
