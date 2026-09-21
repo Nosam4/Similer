@@ -8,6 +8,10 @@
     "build": "vite build",
     "lint": "eslint .",
     "test": "node --test src/**/*.test.js supabase/functions/_shared/wordgame/*.test.js",
+    "test:e2e": "playwright test --grep @rehearsal",
+    "test:e2e:four": "playwright test --grep @four-player",
+    "test:e2e:eight": "playwright test --grep @eight-player",
+    "test:e2e:stress": "playwright test --grep @stress",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -20,6 +24,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",

@@ -50,6 +50,10 @@ function GameActionPanel({
   submittedPlayerVoteCount,
   visibleErrorText,
 }) {
+  const turnControlsDisabled = Boolean(
+    isOnlinePlaying && (onlineGameBusy || !isMyTurnOnline),
+  )
+
   return (
     <section className="controls local-game-controls">
       {isOnlineWaiting ? (
@@ -127,7 +131,7 @@ function GameActionPanel({
           ) : (
             <TurnPanel
               actor={actor}
-              busy={isOnlinePlaying ? onlineGameBusy : false}
+              controlsDisabled={turnControlsDisabled}
               legal={legal}
               potSummary={potSummary}
               amountInput={amountInput}

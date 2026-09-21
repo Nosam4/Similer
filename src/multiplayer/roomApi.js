@@ -6,6 +6,7 @@ const MAX_DISPLAY_NAME_LENGTH = 8
 const GAME_COMMAND_TIMEOUT_MS = 12_000
 const GAME_COMMAND_MAX_ATTEMPTS = 3
 const GAME_COMMAND_RETRY_DELAYS_MS = [250, 750]
+let anonymousSessionInFlight = null
 
 function getSupabaseClient() {
   if (!isSupabaseConfigured || !supabase) {
@@ -44,7 +45,7 @@ function requireDisplayName(input) {
   return displayName
 }
 
-export async function ensureAnonymousSession() {
+async function initializeAnonymousSession() {
   const client = getSupabaseClient()
   const existing = await client.auth.getSession()
 
@@ -66,6 +67,18 @@ export async function ensureAnonymousSession() {
   }
 
   return created.data.user
+}
+
+export async function ensureAnonymousSession() {
+  if (!anonymousSessionInFlight) {
+    anonymousSessionInFlight = initializeAnonymousSession()
+  }
+
+  try {
+    return await anonymousSessionInFlight
+  } finally {
+    anonymousSessionInFlight = null
+  }
 }
 
 function unwrapSingleRow(data) {

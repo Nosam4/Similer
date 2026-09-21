@@ -113,7 +113,7 @@ async function playChecksUntilPhaseChanges(clientsBySeat, roomId, initialState, 
   let state = initialState
 
   for (let actionCount = 0; actionCount < 12 && state.phase === phase; actionCount += 1) {
-    const actorId = Number(state.currentPlayerIndex)
+    const actorId = state.players[state.currentPlayerIndex]?.id
     const actorClient = clientsBySeat.get(actorId)
     if (!actorClient) {
       throw new Error(`No browser session exists for acting player ${actorId}.`)

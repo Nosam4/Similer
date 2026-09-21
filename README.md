@@ -121,6 +121,30 @@ Deploy the Edge Function after changing server-side game logic:
 supabase functions deploy game-action --project-ref yvltpqzlcbcdrtchnfrb
 ```
 
+### Playwright multiplayer test
+
+The end-to-end test opens three isolated Chromium sessions against the published site,
+starts an online game, checks that every client reaches the same live room-state version,
+and removes the test room and anonymous users afterward.
+
+```bash
+npx playwright install chromium
+set -a
+source .env.supabase.local
+set +a
+npm run test:e2e
+```
+
+Run ten consecutive lobby-convergence cycles with the same three isolated sessions. This
+avoids consuming Supabase's anonymous sign-in allowance while still exercising repeated
+create, join, synchronization, and leave behavior:
+
+```bash
+npm run test:e2e:stress
+```
+
+Set `PLAYWRIGHT_BASE_URL` to test another deployment or a local server.
+
 ## GitHub Pages
 
 The Vite production base path is `/Similer/`, configured in `vite.config.js`.

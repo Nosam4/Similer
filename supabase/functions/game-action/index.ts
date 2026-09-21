@@ -2,12 +2,13 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.106.2'
 import {
   applyPlayerAction,
   completeDebateStage,
-  createInitialGame,
+  getCurrentActor,
   forceCompleteArguments,
   markArgumentComplete,
   resolveShowdownVotes,
   startNextHand,
 } from '../_shared/wordgame/engine.js'
+import { createRoomGame } from '../_shared/wordgame/serverRoomGame.js'
 import {
   attachServerSimilarityScores,
   buildServerSimilarityScores,
@@ -29,7 +30,6 @@ const STARTING_STACK = 400
 const ANTE = 10
 const MIN_BET = 10
 const PUBLIC_WORD_PHASES = new Set(['debate', 'showdownVoting', 'handComplete'])
-const FALLBACK_PLAYER_NAMES = ['North', 'East', 'South', 'West', 'Alpha', 'Bravo', 'Charlie', 'Delta']
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function jsonResponse(body: unknown, status = 200) {
@@ -214,20 +214,6 @@ function getPlayerVoteVoterIds(game: any) {
   return game.players
     .filter((player: any) => !player.isJudge)
     .map((player: any) => Number(player.id))
-}
-
-function normalizeDisplayName(input: unknown, index = 0) {
-  const cleanName = String(input ?? '')
-    .replace(/[^a-z]/gi, '')
-    .slice(0, 8)
-
-  return cleanName || FALLBACK_PLAYER_NAMES[index] || 'Player'
-}
-
-function getRoomPlayerNames(roomPlayers: any[]) {
-  return [...roomPlayers]
-    .sort((left, right) => left.seat_index - right.seat_index)
-    .map((player, index) => normalizeDisplayName(player.display_name, index))
 }
 
 async function requireSupabaseUser(req: Request, supabaseUrl: string, anonKey: string) {
@@ -676,8 +662,7 @@ Deno.serve(async (req) => {
       }
 
       nextGame = measureSyncStage(timings, 'stateTransition', () => {
-        return createInitialGame({
-          playerNames: getRoomPlayerNames(roomPlayers),
+        return createRoomGame(roomPlayers, {
           startingStack: payload.startingStack ?? STARTING_STACK,
           ante: payload.ante ?? ANTE,
           bigBlind: payload.bigBlind ?? MIN_BET,
@@ -702,8 +687,8 @@ Deno.serve(async (req) => {
       })
 
       if (command === 'playerAction') {
-        const actingSeatIndex = Number(fullGame.currentPlayerIndex)
-        if (Number(currentMember.seat_index) !== actingSeatIndex) {
+        const actor = getCurrentActor(fullGame)
+        if (!actor || Number(currentMember.seat_index) !== actor.id) {
           throw new Error('It is not your turn yet.')
         }
 
@@ -758,8 +743,7 @@ Deno.serve(async (req) => {
         }
 
         nextGame = measureSyncStage(timings, 'stateTransition', () => {
-          return createInitialGame({
-            playerNames: getRoomPlayerNames(roomPlayers),
+          return createRoomGame(roomPlayers, {
             startingStack: payload.startingStack ?? STARTING_STACK,
             ante: payload.ante ?? ANTE,
             bigBlind: payload.bigBlind ?? MIN_BET,

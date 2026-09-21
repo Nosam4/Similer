@@ -1731,6 +1731,7 @@ function sanitizePlayerName(name, index = 0) {
 export function createInitialGame(options = {}) {
   const {
     playerNames = ['North', 'East', 'South', 'West'],
+    playerIds = null,
     startingStack = 400,
     bigBlind = 10,
     ante = bigBlind,
@@ -1742,7 +1743,17 @@ export function createInitialGame(options = {}) {
 
   const finalNames = cleanNames.length >= 3 ? cleanNames : ['North', 'East', 'South', 'West']
 
-  const players = finalNames.map((name, index) => makeFreshPlayer(index, name, startingStack))
+  const ids = playerIds ?? finalNames.map((_, index) => index)
+  if (
+    !Array.isArray(ids) ||
+    ids.length !== finalNames.length ||
+    ids.some((id) => !Number.isInteger(id) || id < 0 || id >= 8) ||
+    new Set(ids).size !== ids.length
+  ) {
+    throw new Error('Player ids must be unique room seats matching the player names.')
+  }
+
+  const players = finalNames.map((name, index) => makeFreshPlayer(ids[index], name, startingStack))
 
   const state = {
     handNumber: 0,
@@ -2164,7 +2175,7 @@ export function getLegalActions(state) {
     call: toCall > 0,
     bet: toCall === 0 && player.stack > 0 && player.canRaise,
     raise: toCall > 0 && player.stack > toCall && player.canRaise,
-    allIn: player.stack > 0,
+    allIn: player.stack > 0 && (maxTo <= state.currentBet || player.canRaise),
     callAmount: Math.min(toCall, player.stack),
     minBetTo: minBetTo <= maxTo ? minBetTo : maxTo,
     minRaiseTo: minRaiseTo <= maxTo ? minRaiseTo : maxTo,

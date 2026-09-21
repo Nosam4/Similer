@@ -196,6 +196,13 @@
   background: rgba(255, 255, 255, 0.035);
 }
 
+.local-game-actionbar input:disabled {
+  border-color: rgba(247, 228, 177, 0.1);
+  color: rgba(255, 248, 223, 0.34);
+  background: rgba(255, 255, 255, 0.035);
+  cursor: not-allowed;
+}
+
 .local-game-actionbar .quick-bet-button {
   min-width: 74px;
   padding-inline: 10px;

@@ -1,4 +1,4 @@
-import wordBankData from './wordBank.json'
+import wordBankData from './wordBank.json' with { type: 'json' }
 
 const PHASE_LABELS = {
   preflop: 'Preflop',
@@ -2222,7 +2222,7 @@ export function getLegalActions(state) {
     call: toCall > 0,
     bet: toCall === 0 && player.stack > 0 && player.canRaise,
     raise: toCall > 0 && player.stack > toCall && player.canRaise,
-    allIn: player.stack > 0,
+    allIn: player.stack > 0 && (maxTo <= state.currentBet || player.canRaise),
     callAmount: Math.min(toCall, player.stack),
     minBetTo: minBetTo <= maxTo ? minBetTo : maxTo,
     minRaiseTo: minRaiseTo <= maxTo ? minRaiseTo : maxTo,
