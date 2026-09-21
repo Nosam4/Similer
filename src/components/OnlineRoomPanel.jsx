@@ -197,7 +197,6 @@ function OnlineRoomPanel({
     let reconnectScheduled = false
     let lastHeartbeatAt = Date.now()
     let lastActivePollAt = 0
-    let lastWaitingPollAt = 0
 
     function setConnectionMode(nextStatus) {
       if (isMounted) {
@@ -374,7 +373,6 @@ function OnlineRoomPanel({
               realtimeMissedMembership = false
               pollingFailed = false
               lastActivePollAt = Date.now()
-              lastWaitingPollAt = lastActivePollAt
             }
             setConnectionMode(getConnectionMode())
             setErrorText('')
@@ -406,18 +404,12 @@ function OnlineRoomPanel({
       if (
         !isMounted ||
         roomStatusRef.current === 'playing' ||
-        waitingRefreshInFlight ||
-        !shouldPollRoom({
-          connectionMode: getConnectionMode(),
-          lastPolledAt: lastWaitingPollAt,
-          now: Date.now(),
-        })
+        waitingRefreshInFlight
       ) {
         return
       }
 
       waitingRefreshInFlight = true
-      lastWaitingPollAt = Date.now()
       try {
         const [nextRoom, nextPlayers] = await Promise.all([
           fetchRoom(room.id),
@@ -579,6 +571,8 @@ function OnlineRoomPanel({
       refreshActiveRoomStateVersion()
     }, ROOM_FALLBACK_POLL_INTERVAL_MS)
     const waitingRoomPollId = window.setInterval(() => {
+      // Lobby membership can change during subscription setup without a game
+      // version bump. Keep its fallback fast so hosts can start promptly.
       refreshWaitingRoomSnapshot()
     }, ROOM_FALLBACK_POLL_INTERVAL_MS)
     const watchdogId = window.setInterval(() => {
