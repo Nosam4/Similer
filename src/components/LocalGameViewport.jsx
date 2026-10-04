@@ -17,6 +17,7 @@ function LocalGameViewport({
   setupPanel,
   table,
   actionPanel,
+  actionPanelTransitionKey,
   logPanel,
   showGame = true,
   isPractice = false,
@@ -24,9 +25,14 @@ function LocalGameViewport({
 }) {
   const [activeDrawer, setActiveDrawer] = useState(null)
   const viewportRef = useRef(null)
+  const actionbarRef = useRef(null)
   useLayoutEffect(() => {
     viewportRef.current?.scrollTo({ top: 0, left: 0 })
   }, [showGame, eyebrow])
+  useLayoutEffect(() => {
+    // New stages start at their heading; vote/status updates preserve reading position.
+    actionbarRef.current?.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+  }, [showGame, actionPanelTransitionKey])
   const hasSetupPanel = showGame && Boolean(setupPanel)
   const visibleDrawer = (activeDrawer === 'setup' && !hasSetupPanel) || (activeDrawer === 'log' && !showGame) ? null : activeDrawer
   const drawerTitle = visibleDrawer ? DRAWER_TITLES[visibleDrawer] : ''
@@ -87,7 +93,7 @@ function LocalGameViewport({
         {table}
       </section>}
 
-      {showGame && <section className="local-game-actionbar" aria-label="Game actions">
+      {showGame && <section ref={actionbarRef} className="local-game-actionbar" aria-label="Game actions">
         {actionPanel}
       </section>}
 

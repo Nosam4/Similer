@@ -10,6 +10,7 @@ import {
 } from '../wordgame/engine'
 import { getWordPackById } from '../wordgame/wordPacks'
 import { invokeGameCommand, submitShowdownVote } from '../multiplayer/roomApi'
+import { isValidVoteTarget } from './showdownVoting'
 
 const PLAYER_NAMES = ['North', 'East', 'South', 'West']
 const LOCAL_TEST_PLAYER_NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
@@ -302,7 +303,6 @@ export function useGameActions({
   async function submitOnlinePlayerVote() {
     const selectedVote = onlinePlayerVoteValue
     const voterId = myOnlineSeatIndex
-    const targetId = Number(selectedVote)
 
     if (!isOnlinePlaying || !isShowdownVoting || voterId === null) {
       return
@@ -315,11 +315,12 @@ export function useGameActions({
       return
     }
 
-    if (!contenders.some((player) => player.id === targetId)) {
+    if (!isValidVoteTarget({ value: selectedVote, contenders })) {
       setErrorText('Choose a valid player vote before submitting.')
       return
     }
 
+    const targetId = Number(selectedVote)
     if (contenders.some((player) => player.id === voterId) && targetId === voterId) {
       setErrorText('Choose another player. You cannot vote for your own word.')
       return
@@ -358,17 +359,16 @@ export function useGameActions({
   }
 
   async function submitOnlineJudgeVote() {
-    const targetId = Number(onlineJudgeVoteValue)
-
     if (!isOnlinePlaying || !isShowdownVoting || judge?.id !== myOnlineSeatIndex) {
       return
     }
 
-    if (!contenders.some((player) => player.id === targetId)) {
+    if (!isValidVoteTarget({ value: onlineJudgeVoteValue, contenders })) {
       setErrorText('Choose a valid judge vote before submitting.')
       return
     }
 
+    const targetId = Number(onlineJudgeVoteValue)
     try {
       setOnlineGameBusy(true)
       await submitShowdownVote({

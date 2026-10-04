@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { isValidPlayerVote, isValidVoteTarget } from '../game/showdownVoting'
 
 function ShowdownVotingPanel({
   judge,
@@ -47,8 +48,14 @@ function ShowdownVotingPanel({
   }
   const myPlayerVoteSubmitted =
     myPlayerVoteVoter && isValidSubmittedPlayerVote(myPlayerVoteVoter)
-  const onlinePlayerVoteIsValid = myPlayerVoteTargets.some((target) => {
-    return target.id === Number(onlinePlayerVoteValue)
+  const onlinePlayerVoteIsValid = Boolean(myPlayerVoteVoter) && isValidPlayerVote({
+    voterId: myPlayerId,
+    value: onlinePlayerVoteValue,
+    contenders,
+  })
+  const onlineJudgeVoteIsValid = isValidVoteTarget({
+    value: onlineJudgeVoteValue,
+    contenders,
   })
 
   if (isOnlinePlaying) {
@@ -116,7 +123,7 @@ function ShowdownVotingPanel({
               </select>
               <button
                 type="button"
-                disabled={!onlineJudgeVoteValue || onlineGameBusy}
+                disabled={!onlineJudgeVoteIsValid || onlineGameBusy}
                 onClick={onSubmitOnlineJudgeVote}
               >
                 {judgeVoteSubmitted ? 'Update Judge Vote' : 'Submit Judge Vote'}

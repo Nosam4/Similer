@@ -7,6 +7,7 @@ import {
   getEffectiveJudgeVote,
   getEffectivePlayerVotes,
   isValidPlayerVote,
+  isValidVoteTarget,
 } from './showdownVoting.js'
 
 const contenders = [
@@ -112,6 +113,25 @@ describe('showdown voting helpers', () => {
     assert.equal(isValidPlayerVote({ voterId: 0, value: '9', contenders }), false)
     assert.equal(isValidPlayerVote({ voterId: 0, value: '', contenders }), false)
     assert.equal(isValidPlayerVote({ voterId: 0, value: null, contenders }), false)
+  })
+
+  it('rejects an empty selection when seat zero is a valid voting target', () => {
+    for (const value of ['', '  ', null, undefined, false, [], {}]) {
+      assert.equal(isValidVoteTarget({ value, contenders }), false)
+      assert.equal(isValidPlayerVote({ voterId: 1, value, contenders }), false)
+    }
+
+    for (const value of ['0', 0]) {
+      assert.equal(isValidVoteTarget({ value, contenders }), true)
+      assert.equal(isValidPlayerVote({ voterId: 1, value, contenders }), true)
+      assert.equal(isValidPlayerVote({ voterId: 0, value, contenders }), false)
+    }
+  })
+
+  it('rejects invalid or unavailable vote targets', () => {
+    for (const value of ['not-a-seat', '1.5', NaN, Infinity, -1, '9']) {
+      assert.equal(isValidVoteTarget({ value, contenders }), false)
+    }
   })
 
   it('counts local valid player votes and online submitted player votes', () => {

@@ -355,6 +355,7 @@ function App() {
     : isOnlineRoomConnected
       ? 'Your Lobby'
       : practiceMode ? 'Practice Table' : 'Word poker with friends'
+  const actionPanelTransitionKey = `${isOnlinePlaying ? `online:${roomId}` : 'practice'}:${game.handNumber}:${game.phase}`
   const viewportStageOverlay = (
     <ArgumentStageOverlay
       busy={isOnlinePlaying ? onlineGameBusy : false}
@@ -476,6 +477,7 @@ function App() {
       setupPanel={localSetupPanel}
       table={viewportTable}
       actionPanel={viewportActionPanel}
+      actionPanelTransitionKey={actionPanelTransitionKey}
       logPanel={<ActionLogPanel log={game.log} />}
     />
   )

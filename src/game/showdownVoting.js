@@ -2,6 +2,14 @@ function hasContender(contenders, playerId) {
   return contenders.some((contender) => contender.id === playerId)
 }
 
+export function isValidVoteTarget({ value, contenders }) {
+  const hasSelection = typeof value === 'string'
+    ? value.trim() !== ''
+    : typeof value === 'number'
+
+  return hasSelection && Number.isInteger(Number(value)) && hasContender(contenders, Number(value))
+}
+
 export function buildDefaultPlayerVotes({ isShowdownVoting, contenders, playerVoteVoters }) {
   if (!isShowdownVoting || contenders.length === 0) {
     return {}
@@ -34,14 +42,9 @@ export function getEffectiveJudgeVote({ judge, isOnlinePlaying, judgeVote, conte
 }
 
 export function isValidPlayerVote({ voterId, value, contenders }) {
-  const targetId = Number(value)
-
   return (
-    value !== undefined &&
-    value !== null &&
-    value !== '' &&
-    targetId !== voterId &&
-    hasContender(contenders, targetId)
+    isValidVoteTarget({ value, contenders }) &&
+    Number(value) !== voterId
   )
 }
 
