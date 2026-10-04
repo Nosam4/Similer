@@ -1,0 +1,422 @@
+/* Shared game controls, plus a roster layout for smaller screens. */
+.personal-word-label {
+  display: none;
+}
+
+.table-seat.viewer-seat .seat-avatar {
+  border-color: #fff8df;
+}
+
+.local-game-actionbar .turn-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+}
+
+.local-game-actionbar .turn-heading h3 {
+  font-size: 1.1rem;
+}
+
+.local-game-actionbar .your-turn-panel .turn-heading h3 {
+  color: #f7d881;
+}
+
+.local-game-actionbar .turn-heading p {
+  font-size: 0.85rem;
+}
+
+.local-game-actionbar .betting-amount-row,
+.local-game-actionbar .betting-action-row {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.local-game-actionbar .betting-amount-row {
+  gap: 10px 18px;
+}
+
+.local-game-actionbar .bet-amount-field {
+  display: grid;
+  grid-template-columns: auto minmax(90px, 140px);
+  align-items: center;
+  gap: 3px 12px;
+  min-width: 0;
+}
+
+.local-game-actionbar .bet-amount-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+}
+
+.bet-amount-hint {
+  grid-column: 1 / -1;
+  color: #c7c7bd;
+  font-size: 0.75rem;
+}
+
+.bet-amount-hint.invalid-amount {
+  color: #ffb8ae;
+}
+
+.local-game-actionbar .bet-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.local-game-actionbar .quick-bet-button,
+.local-game-actionbar .action-button {
+  min-height: 44px;
+}
+
+.local-game-actionbar .action-button {
+  display: grid;
+  place-content: center;
+  gap: 1px;
+  font-weight: 800;
+}
+
+.action-chip-detail {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.local-game-actionbar .bet-action:enabled,
+.local-game-actionbar .raise-action:enabled {
+  color: #182b20;
+  border-color: #f7d881;
+  background: #f7d881;
+}
+
+.local-game-actionbar .bet-action:hover:enabled,
+.local-game-actionbar .raise-action:hover:enabled {
+  background: #fff0bc;
+}
+
+@media (max-width: 760px) {
+  .local-game-actionbar .action-row {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .local-game-actionbar .betting-amount-row > * {
+    flex: 1 1 auto;
+  }
+
+  .local-game-actionbar .betting-action-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .local-game-actionbar .betting-action-row .action-button {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .local-game-viewport {
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  .local-game-viewport .local-game-stage {
+    display: block;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    align-content: start;
+    padding: 8px;
+  }
+
+  .local-game-stage .poker-table-shell {
+    height: auto;
+    min-height: 0;
+    grid-template-rows: max-content max-content;
+  }
+
+  .local-game-stage .poker-table-meta {
+    display: flex;
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 5px;
+  }
+
+  .local-game-stage .poker-table-meta span {
+    padding: 4px 7px;
+    font-size: 0.69rem;
+  }
+
+  .local-game-viewport .poker-felt {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-content: start;
+    align-items: start;
+    gap: 10px;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    padding: 12px;
+    border-radius: 18px;
+    box-shadow: inset 0 0 0 4px rgba(229, 177, 94, 0.13);
+  }
+
+  .local-game-viewport .poker-felt-inner {
+    display: none;
+  }
+
+  .local-game-viewport .table-pot {
+    position: static;
+    transform: none;
+    min-width: 56px;
+    padding: 12px 9px;
+    border-radius: 12px;
+  }
+
+  .local-game-viewport .table-center,
+  .local-game-viewport .table-center.judge-center {
+    position: static;
+    width: auto;
+    min-width: 0;
+    transform: none;
+    padding: 9px;
+    border-radius: 12px;
+    gap: 4px;
+  }
+
+  .local-game-viewport .table-center-kicker {
+    display: none;
+  }
+
+  .local-game-viewport .table-center > strong {
+    font-size: 1rem;
+    text-transform: none;
+  }
+
+  .local-game-viewport .table-center > span:last-child {
+    font-size: 0.74rem;
+  }
+
+  .local-game-viewport .center-judge-slots {
+    gap: 5px;
+  }
+
+  .local-game-viewport .center-judge-slot {
+    border: 0;
+    padding: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  .local-game-viewport .center-judge-slot span {
+    font-size: 0.64rem;
+  }
+
+  .local-game-viewport .center-judge-slot strong {
+    font-size: 1.2rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .local-game-viewport .center-name-slot strong {
+    font-size: 0.8rem;
+  }
+
+  .local-game-viewport .seat-ring {
+    position: static;
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-flow: row;
+    gap: 8px;
+    overflow: visible;
+  }
+
+  .local-game-viewport .table-seat {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: 100%;
+    min-width: 0;
+    transform: none;
+    display: block;
+    border: 1px solid rgba(247, 228, 177, 0.24);
+    border-radius: 11px;
+    padding: 8px;
+    background: rgba(3, 18, 13, 0.78);
+    filter: none;
+  }
+
+  .local-game-viewport .table-seat.active {
+    border-color: #f7d881;
+    box-shadow: 0 0 0 1px #f7d881, inset 0 0 20px rgba(247, 216, 129, 0.08);
+  }
+
+  .local-game-viewport .seat-avatar-wrap {
+    position: absolute;
+    top: 7px;
+    right: 8px;
+    width: 18px;
+    height: 18px;
+  }
+
+  .local-game-viewport .seat-avatar {
+    display: none;
+  }
+
+  .local-game-viewport .dealer-token {
+    position: static;
+    width: 16px;
+    height: 16px;
+    font-size: 0.65rem;
+    border-width: 1px;
+  }
+
+  .local-game-viewport .seat-panels {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 6px;
+    margin: 0;
+  }
+
+  .local-game-viewport .seat-panel {
+    min-height: 24px;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    gap: 4px;
+  }
+
+  .local-game-viewport .seat-panel strong {
+    font-size: 0.84rem;
+    line-height: 1.25;
+  }
+
+  .local-game-viewport .seat-identity-panel {
+    flex-wrap: wrap;
+    padding-right: 12px;
+    gap: 4px 8px;
+  }
+
+  .local-game-viewport .seat-identity-panel > div {
+    width: 100%;
+    gap: 4px;
+  }
+
+  .local-game-viewport .seat-status-text {
+    font-size: 0.71rem;
+  }
+
+  .local-game-viewport .seat-chip-count {
+    font-size: 0.84rem;
+  }
+
+  .local-game-viewport .seat-word-panel strong {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .local-game-viewport .word-eye-button {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+  }
+
+  .local-game-viewport .table-seat.viewer-seat {
+    grid-column: 1 / -1;
+    order: -1;
+    padding: 12px;
+    border-color: rgba(247, 216, 129, 0.7);
+    background: rgba(3, 18, 13, 0.94);
+  }
+
+  .local-game-viewport .viewer-seat .seat-identity-panel > div {
+    display: flex;
+    align-items: baseline;
+    flex: 1;
+    gap: 10px;
+  }
+
+  .local-game-viewport .viewer-seat .seat-word-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+  }
+
+  .local-game-viewport .viewer-seat .personal-word-label {
+    display: block;
+    color: #d9c592;
+    font-size: 0.72rem;
+  }
+
+  .local-game-viewport .viewer-seat .seat-word-panel strong {
+    grid-row: 2;
+    font-size: 1.55rem;
+  }
+
+  .local-game-viewport .viewer-seat .word-eye-button {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+
+  .local-game-viewport .judge-token-flight {
+    display: none;
+  }
+
+  .local-game-viewport .local-game-actionbar {
+    max-height: 60dvh;
+    padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+  }
+
+  .local-game-actionbar .turn-panel {
+    gap: 8px;
+  }
+
+  .local-game-actionbar .turn-heading {
+    display: grid;
+    gap: 2px;
+  }
+
+  .local-game-actionbar .betting-amount-row {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .local-game-actionbar .bet-amount-field {
+    flex-basis: 100%;
+    grid-template-columns: minmax(0, 1fr) minmax(85px, 40%);
+    gap: 2px 8px;
+  }
+
+  .local-game-actionbar .bet-amount-field label {
+    font-size: 0.8rem;
+  }
+
+  .local-game-actionbar .bet-amount-field input {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    font-size: 1rem;
+  }
+
+  .local-game-actionbar .bet-amount-hint {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: 0.7rem;
+  }
+
+  .local-game-actionbar .bet-presets {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+    width: 100%;
+  }
+
+  .local-game-actionbar .quick-bet-button {
+    min-width: 0;
+    padding: 6px 3px;
+    font-size: 0.73rem;
+  }
+}

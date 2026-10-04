@@ -132,6 +132,8 @@ function GameActionPanel({
             <TurnPanel
               actor={actor}
               controlsDisabled={turnControlsDisabled}
+              isOnlinePlaying={isOnlinePlaying}
+              isMyTurnOnline={isMyTurnOnline}
               legal={legal}
               potSummary={potSummary}
               amountInput={amountInput}

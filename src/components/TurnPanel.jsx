@@ -1,3 +1,5 @@
+import './GameUsability.css'
+
 function clampBetTarget(target, legal) {
   const minimumTarget = legal.raise ? legal.minRaiseTo : legal.minBetTo
   const maximumTarget = legal.maxTo
@@ -23,6 +25,8 @@ function getPotBetTarget({ legal, potSummary, fraction }) {
 function TurnPanel({
   actor,
   controlsDisabled = false,
+  isOnlinePlaying = false,
+  isMyTurnOnline = false,
   legal,
   potSummary,
   amountInput,
@@ -30,125 +34,140 @@ function TurnPanel({
   onRunAction,
   pulseTick = 0,
 }) {
+  const isWaiting = isOnlinePlaying && !isMyTurnOnline
   const canSetBetTarget = legal.bet || legal.raise
+  const contribution = actor?.betThisStreet ?? 0
+  const minimumTarget = legal.raise ? legal.minRaiseTo : legal.minBetTo
+  const targetInput = String(amountInput ?? '')
+  const betTarget = targetInput.trim() === '' ? minimumTarget : Number(targetInput)
+  const isValidTarget = Number.isSafeInteger(betTarget) &&
+    betTarget >= minimumTarget && betTarget <= legal.maxTo && betTarget > contribution
+  // The engine takes a street total. For an opening bet, show the chips being added.
+  const inputOffset = legal.raise ? 0 : contribution
+  const displayedAmount = targetInput.trim() === ''
+    ? (minimumTarget ?? 0) - inputOffset
+    : Number.isFinite(betTarget) ? betTarget - inputOffset : targetInput
+  const committedAmount = isValidTarget ? betTarget - contribution : null
+  const actionLabel = legal.raise ? 'Raise' : 'Bet'
 
   return (
     <div
       key={`turn-panel-${pulseTick}`}
-      className={`turn-panel${pulseTick > 0 ? ' stage-pulse stage-pulse-subtle' : ''}`}
+      className={`turn-panel${isMyTurnOnline ? ' your-turn-panel' : ''}${pulseTick > 0 ? ' stage-pulse stage-pulse-subtle' : ''}`}
+      data-actor-name={actor?.name ?? ''}
     >
-      <h3>Current Turn</h3>
-      <p>
-        {actor ? `${actor.name} to act.` : 'No active player.'} To call: {legal.callAmount}
-      </p>
-
-      <div className="amount-row betting-amount-row">
-        <label htmlFor="amount-input">Bet/Raise target</label>
-        <input
-          id="amount-input"
-          type="number"
-          min="0"
-          disabled={controlsDisabled}
-          value={amountInput}
-          onChange={(event) => setAmountInput(event.target.value)}
-          placeholder="Enter target chips"
-        />
-        <button
-          type="button"
-          className="quick-bet-button"
-          disabled={controlsDisabled || !legal.bet}
-          onClick={() => setAmountInput(String(legal.minBetTo ?? legal.maxTo ?? 0))}
-        >
-          Min Bet
-        </button>
-        <button
-          type="button"
-          className="quick-bet-button"
-          disabled={controlsDisabled || !legal.raise}
-          onClick={() => setAmountInput(String(legal.minRaiseTo ?? legal.maxTo ?? 0))}
-        >
-          Min Raise
-        </button>
-        <button
-          type="button"
-          className="quick-bet-button"
-          disabled={controlsDisabled || !canSetBetTarget}
-          onClick={() => {
-            setAmountInput(String(getPotBetTarget({ legal, potSummary, fraction: 0.5 })))
-          }}
-        >
-          1/2 Pot
-        </button>
-        <button
-          type="button"
-          className="quick-bet-button"
-          disabled={controlsDisabled || !canSetBetTarget}
-          onClick={() => {
-            setAmountInput(String(getPotBetTarget({ legal, potSummary, fraction: 1 })))
-          }}
-        >
-          Pot
-        </button>
-        <button
-          type="button"
-          className="quick-bet-button"
-          disabled={controlsDisabled || !canSetBetTarget}
-          onClick={() => setAmountInput(String(legal.maxTo ?? 0))}
-        >
-          Max
-        </button>
+      <div className="turn-heading" role="status" aria-live="polite">
+        <h3>
+          {isOnlinePlaying
+            ? isMyTurnOnline ? 'Your turn' : `Waiting for ${actor?.name ?? 'the next player'}`
+            : actor ? `${actor.name}'s turn` : 'Waiting for the next player'}
+        </h3>
+        <p>
+          {isWaiting ? 'The table will update when they act.'
+            : legal.call ? `${legal.callAmount} chips to call · ${actor?.stack ?? 0} available`
+              : actor ? `You can check · ${actor.stack} chips available` : 'The next round will begin soon.'}
+        </p>
       </div>
 
-      <div className="action-row betting-action-row">
-        <button
-          type="button"
-          className="action-button fold-action"
-          disabled={controlsDisabled || !legal.fold}
-          onClick={() => onRunAction('fold')}
-        >
-          Fold
-        </button>
-        <button
-          type="button"
-          className="action-button check-action"
-          disabled={controlsDisabled || !legal.check}
-          onClick={() => onRunAction('check')}
-        >
-          Check
-        </button>
-        <button
-          type="button"
-          className="action-button call-action"
-          disabled={controlsDisabled || !legal.call}
-          onClick={() => onRunAction('call')}
-        >
-          Call ({legal.callAmount})
-        </button>
-        <button
-          type="button"
-          className="action-button bet-action"
-          disabled={controlsDisabled || !legal.bet}
-          onClick={() => onRunAction('bet')}
-        >
-          Bet
-        </button>
-        <button
-          type="button"
-          className="action-button raise-action"
-          disabled={controlsDisabled || !legal.raise}
-          onClick={() => onRunAction('raise')}
-        >
-          Raise
-        </button>
-        <button
-          type="button"
-          className="action-button all-in-action"
-          disabled={controlsDisabled || !legal.allIn}
-          onClick={() => onRunAction('all-in')}
-        >
-          All-in
-        </button>
-      </div>
+      {!isWaiting && actor ? (
+        <>
+          {canSetBetTarget ? (
+            <div className="amount-row betting-amount-row">
+              <div className="bet-amount-field">
+                <label htmlFor="amount-input">{legal.raise ? 'Raise total to' : 'Bet amount'}</label>
+                <input
+                  id="amount-input"
+                  type="number"
+                  inputMode="numeric"
+                  min={minimumTarget - inputOffset}
+                  max={legal.maxTo - inputOffset}
+                  step="1"
+                  disabled={controlsDisabled}
+                  value={displayedAmount}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setAmountInput(value === '' ? '' : String(Number(value) + inputOffset))
+                  }}
+                  aria-describedby="bet-amount-hint"
+                  aria-invalid={!isValidTarget}
+                />
+                <span id="bet-amount-hint" className={isValidTarget ? 'bet-amount-hint' : 'bet-amount-hint invalid-amount'}>
+                  {isValidTarget ? '' : 'Enter a whole number · '}
+                  {minimumTarget - inputOffset}–{legal.maxTo - inputOffset} chips
+                </span>
+              </div>
+              <div className="bet-presets" aria-label="Quick bet amounts">
+                <button
+                  type="button"
+                  className="quick-bet-button"
+                  disabled={controlsDisabled}
+                  onClick={() => setAmountInput(String(minimumTarget))}
+                >
+                  {legal.raise ? 'Min Raise' : 'Min Bet'}
+                </button>
+                <button
+                  type="button"
+                  className="quick-bet-button"
+                  disabled={controlsDisabled}
+                  onClick={() => setAmountInput(String(getPotBetTarget({ legal, potSummary, fraction: 0.5 })))}
+                >
+                  1/2 Pot
+                </button>
+                <button
+                  type="button"
+                  className="quick-bet-button"
+                  disabled={controlsDisabled}
+                  onClick={() => setAmountInput(String(getPotBetTarget({ legal, potSummary, fraction: 1 })))}
+                >
+                  Pot
+                </button>
+                <button
+                  type="button"
+                  className="quick-bet-button"
+                  disabled={controlsDisabled}
+                  onClick={() => setAmountInput(String(legal.maxTo))}
+                >
+                  Max
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="action-row betting-action-row">
+            {legal.check ? (
+              <button type="button" className="action-button check-action" disabled={controlsDisabled} onClick={() => onRunAction('check')}>
+                Check
+              </button>
+            ) : null}
+            {legal.call ? (
+              <button type="button" className="action-button call-action" disabled={controlsDisabled} onClick={() => onRunAction('call')}>
+                Call {legal.callAmount}
+              </button>
+            ) : null}
+            {canSetBetTarget ? (
+              <button
+                type="button"
+                className={`action-button ${legal.raise ? 'raise-action' : 'bet-action'}`}
+                disabled={controlsDisabled || !isValidTarget}
+                onClick={() => onRunAction(legal.raise ? 'raise' : 'bet', betTarget)}
+              >
+                {isValidTarget ? legal.raise ? `Raise to ${betTarget}` : `Bet ${committedAmount}` : actionLabel}
+                {legal.raise && isValidTarget ? <span className="action-chip-detail">Add {committedAmount} chips</span> : null}
+              </button>
+            ) : null}
+            {legal.allIn ? (
+              <button type="button" className="action-button all-in-action" disabled={controlsDisabled} onClick={() => onRunAction('all-in')}>
+                All-in {actor.stack}
+              </button>
+            ) : null}
+            {legal.fold ? (
+              <button type="button" className="action-button fold-action" disabled={controlsDisabled} onClick={() => onRunAction('fold')}>
+                Fold
+              </button>
+            ) : null}
+          </div>
+        </>
+      ) : null}
     </div>
   )
 }

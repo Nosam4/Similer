@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
   createInitialGame,
@@ -27,6 +27,7 @@ import {
 } from './multiplayer/privateGameState'
 import { useGameActions } from './game/useGameActions'
 import { useOnlineGameState } from './game/useOnlineGameState'
+import { getLocalArgumentMarkPlayerId } from './game/localArgumentSpeaker'
 import {
   buildDefaultPlayerVotes,
   canResolveShowdownVotes,
@@ -51,17 +52,8 @@ const INITIAL_PULSE_TICKS = {
   winnerLine: 0,
 }
 
-function getLocalArgumentMarkPlayerId(progress, actor = null) {
-  const requiredPlayerIds = progress?.requiredPlayerIds ?? []
-
-  if (actor && requiredPlayerIds.includes(actor.id)) {
-    return actor.id
-  }
-
-  return requiredPlayerIds[0] ?? null
-}
-
 function App() {
+  const [practiceMode, setPracticeMode] = useState(false)
   const [localGame, setLocalGame] = useState(() => {
     return createInitialGame({
       playerNames: PLAYER_NAMES,
@@ -99,6 +91,11 @@ function App() {
     setOnlineVoteStatusRows,
     userId,
   } = useOnlineGameState({ setErrorText })
+  const handleRoomSessionChange = useCallback((session) => {
+    handleOnlineSessionChange(session)
+    if (session?.room) setPracticeMode(false)
+  }, [handleOnlineSessionChange])
+  const showGame = isOnlinePlaying || (practiceMode && !isOnlineRoomConnected)
   const localWordPack = useMemo(() => getWordPackById(localWordPackId), [localWordPackId])
 
   const game = isOnlinePlaying ? hydratedOnlineGame : localGame
@@ -356,8 +353,8 @@ function App() {
   const viewportEyebrow = isOnlinePlaying
     ? 'Online Table'
     : isOnlineRoomConnected
-      ? 'Online Setup'
-      : 'Local Table'
+      ? 'Your Lobby'
+      : practiceMode ? 'Practice Table' : 'Word poker with friends'
   const viewportStageOverlay = (
     <ArgumentStageOverlay
       busy={isOnlinePlaying ? onlineGameBusy : false}
@@ -387,7 +384,7 @@ function App() {
       potSummary={potSummary}
       judge={judge}
       judgeWord={judgeWord}
-      wordBankSize={getWordBankSize(game)}
+      wordBankSize={isOnlinePlaying ? null : getWordBankSize(game)}
       phasePulseTick={pulseTicks.phaseTile}
       handComplete={game.handComplete}
       revealByPlayerId={effectiveRevealByPlayerId}
@@ -458,14 +455,19 @@ function App() {
 
   return (
     <LocalGameViewport
+      showGame={showGame}
+      isPractice={practiceMode && !isOnlineRoomConnected}
+      onGoOnline={() => { setErrorText(''); setPracticeMode(false) }}
       confetti={<ConfettiComponent key={confettiKey} active={confettiActive} mode={confettiMode} />}
       stageOverlay={viewportStageOverlay}
       eyebrow={viewportEyebrow}
       headerPanel={
         <OnlineRoomPanel
-          variant="header"
+          variant={showGame ? 'header' : 'panel'}
           initialSession={onlineSession}
-          onSessionChange={handleOnlineSessionChange}
+          onSessionChange={handleRoomSessionChange}
+          onPractice={() => { setErrorText(''); setPracticeMode(true) }}
+          externalError={visibleErrorText}
           onStartOnlineGame={handleStartOnlineGame}
           onPrivateDataChange={handlePrivateDataChange}
           onlineGameBusy={onlineGameBusy}

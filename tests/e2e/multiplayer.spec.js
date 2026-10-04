@@ -128,7 +128,8 @@ async function openPlayerPage(browser, baseURL, displayName) {
 }
 
 async function readConnection(page) {
-  const text = (await page.locator('.online-room-connection').innerText()).trim()
+  const badge = page.locator('.online-room-connection')
+  const text = ((await badge.getAttribute('aria-label')) ?? await badge.innerText()).trim()
   const match = text.match(CONNECTION_PATTERN)
 
   if (!match) {
@@ -141,25 +142,21 @@ async function readConnection(page) {
   }
 }
 
-function getActingPlayerName(turnText) {
-  return PLAYER_NAMES.find((name) => turnText.startsWith(`${name} to act.`)) ?? null
-}
-
 async function everyPlayerShowsSameTurn(players, previousActorName = null) {
-  const turnTexts = await Promise.all(
-    players.map(({ page }) => page.locator('.turn-panel > p').innerText()),
+  const actorNames = await Promise.all(
+    players.map(({ page }) => page.locator('.turn-panel').getAttribute('data-actor-name')),
   )
-  const actingPlayerName = getActingPlayerName(turnTexts[0] ?? '')
+  const actingPlayerName = actorNames[0]
 
   return Boolean(
     actingPlayerName &&
       actingPlayerName !== previousActorName &&
-      turnTexts.every((turnText) => turnText === turnTexts[0]),
+      actorNames.every((name) => name === actingPlayerName),
   )
 }
 
 async function expectTurnControls(page, { enabled }) {
-  const amountInput = page.getByLabel('Bet/Raise target', { exact: true })
+  const amountInput = page.getByLabel(/^(Bet amount|Raise total to)$/)
   const foldButton = page.getByRole('button', { name: 'Fold', exact: true })
 
   if (enabled) {
@@ -168,13 +165,9 @@ async function expectTurnControls(page, { enabled }) {
     return
   }
 
-  await expect(amountInput).toBeDisabled()
-
-  const turnButtons = page.locator('.turn-panel button')
-  await expect(turnButtons).toHaveCount(11)
-  expect(await turnButtons.evaluateAll((buttons) => buttons.every((button) => button.disabled))).toBe(
-    true,
-  )
+  await expect(amountInput).toHaveCount(0)
+  await expect(page.locator('.turn-panel button')).toHaveCount(0)
+  await expect(page.locator('.turn-panel h3')).toContainText('Waiting for')
 }
 
 test('@rehearsal three isolated players create, join, and start a synchronized game', async ({
@@ -322,8 +315,7 @@ test('@turn-gating only the active player can use betting controls', async ({
       })
       .toBe(true)
 
-    const initialTurnText = await host.locator('.turn-panel > p').innerText()
-    const initialActorName = getActingPlayerName(initialTurnText)
+    const initialActorName = await host.locator('.turn-panel').getAttribute('data-actor-name')
     expect(initialActorName).not.toBeNull()
 
     for (const [playerName, page] of pagesByName) {
@@ -340,8 +332,7 @@ test('@turn-gating only the active player can use betting controls', async ({
       })
       .toBe(true)
 
-    const nextTurnText = await host.locator('.turn-panel > p').innerText()
-    const nextActorName = getActingPlayerName(nextTurnText)
+    const nextActorName = await host.locator('.turn-panel').getAttribute('data-actor-name')
     expect(nextActorName).not.toBeNull()
     expect(nextActorName).not.toBe(initialActorName)
 

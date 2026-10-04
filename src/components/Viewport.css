@@ -1,0 +1,96 @@
+.local-game-viewport.is-game {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+.local-game-viewport.is-practice {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.local-game-viewport.is-home {
+  display: block;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.local-game-viewport .local-game-topbar {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.local-game-room-surface {
+  min-width: 0;
+}
+
+.is-game > .local-game-room-surface {
+  padding: 4px 16px 8px;
+  background: #141621;
+}
+
+.local-game-viewport .local-game-tools {
+  flex-wrap: wrap;
+}
+
+.local-game-viewport .local-game-tools button,
+.local-game-viewport .local-game-drawer-header button {
+  min-height: 44px;
+}
+
+.how-to-play {
+  display: grid;
+  gap: 22px;
+  line-height: 1.65;
+  color: #deded1;
+}
+
+.how-to-play .rules-intro {
+  color: #f7e4b1;
+  font-size: 1.3rem;
+  line-height: 1.4;
+  font-weight: 700;
+}
+
+.rules-steps {
+  margin: 0;
+  padding-left: 24px;
+  display: grid;
+  gap: 20px;
+}
+
+.rules-steps strong, .rules-glossary dt {
+  color: #fff8df;
+  font-weight: 750;
+}
+
+.rules-glossary {
+  margin: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.rules-glossary dd { margin: 2px 0 0; }
+.practice-note {
+  padding: 14px;
+  border: 1px solid #7c704c;
+  border-radius: 12px;
+}
+
+.local-game-viewport :is(button, input, select):focus-visible {
+  outline: 3px solid #f7d88b;
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .local-game-viewport .local-game-topbar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .local-game-viewport .local-game-brand { min-width: 0; }
+  .local-game-viewport .local-game-brand span {
+    font-size: 0.58rem;
+    max-width: 115px;
+  }
+  .local-game-viewport .local-game-tools { gap: 4px; }
+  .local-game-viewport .local-game-tools button { padding: 6px 8px; font-size: 0.78rem; }
+  .is-game > .local-game-room-surface { padding: 0 12px 8px; }
+}

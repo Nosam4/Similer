@@ -20,6 +20,7 @@ import {
   getRoomExitMode,
 } from '../multiplayer/roomExit'
 import { ROOM_FALLBACK_POLL_INTERVAL_MS, shouldPollRoom } from '../multiplayer/roomPolling'
+import './OnlineRoomPanel.css'
 
 const MAX_ROOM_PLAYERS = 8
 const DISPLAY_NAME_STORAGE_KEY = 'similer.displayName'
@@ -79,6 +80,14 @@ function readRememberedRoomCode() {
   }
 }
 
+function readInvitationRoomCode() {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  return normalizeRoomCode(new URLSearchParams(window.location.search).get('room'))
+}
+
 function rememberRoomCode(roomCode) {
   if (typeof window === 'undefined') {
     return
@@ -102,6 +111,8 @@ function OnlineRoomPanel({
   onStartOnlineGame = null,
   onPrivateDataChange = null,
   onlineGameBusy = false,
+  onPractice = null,
+  externalError = '',
   variant = 'panel',
   initialSession = null,
 }) {
@@ -114,7 +125,7 @@ function OnlineRoomPanel({
     return sanitizeDisplayNameInput(sessionDisplayName) || readRememberedDisplayName()
   })
   const [roomCodeInput, setRoomCodeInput] = useState(() => {
-    return normalizeRoomCode(initialSession?.room?.code) || readRememberedRoomCode()
+    return normalizeRoomCode(initialSession?.room?.code) || readInvitationRoomCode() || readRememberedRoomCode()
   })
   const [room, setRoom] = useState(() => initialSession?.room ?? null)
   const [roomState, setRoomState] = useState(() => initialSession?.roomState ?? null)
@@ -124,6 +135,8 @@ function OnlineRoomPanel({
   const [booting, setBooting] = useState(isSupabaseConfigured && !initialSession?.userId)
   const [refreshTick, setRefreshTick] = useState(0)
   const [connectionStatus, setConnectionStatus] = useState('reconnecting')
+  const [copyStatus, setCopyStatus] = useState('')
+  const [manualInvite, setManualInvite] = useState('')
   const displayNameInputRef = useRef(null)
   const roomStateVersionRef = useRef(roomState?.version ?? null)
   const roomStatusRef = useRef(room?.status ?? null)
@@ -656,6 +669,29 @@ function OnlineRoomPanel({
       : connectionStatus === 'polling'
         ? 'Polling'
         : 'Reconnecting'
+  const visibleError = errorText || externalError
+  const isHost = room?.host_user_id === userId
+  const entryDisabled = !isSupabaseConfigured || booting || busy || !userId
+
+  async function handleCopyInvitation() {
+    if (!room?.code || typeof window === 'undefined') {
+      return
+    }
+
+    const invitationUrl = new URL(window.location.href)
+    invitationUrl.search = ''
+    invitationUrl.hash = ''
+    invitationUrl.searchParams.set('room', room.code)
+
+    try {
+      await window.navigator.clipboard.writeText(invitationUrl.toString())
+      setCopyStatus('Invitation link copied. Send it to your friends.')
+      setManualInvite('')
+    } catch {
+      setCopyStatus('Copy this invitation link, or share the room code.')
+      setManualInvite(invitationUrl.toString())
+    }
+  }
 
   function getRequiredDisplayName() {
     const trimmedName = sanitizeDisplayNameInput(displayName)
@@ -686,6 +722,8 @@ function OnlineRoomPanel({
 
     setBusy(true)
     setErrorText('')
+    setCopyStatus('')
+    setManualInvite('')
 
     try {
       const created = await createRoom({
@@ -719,6 +757,8 @@ function OnlineRoomPanel({
 
     setBusy(true)
     setErrorText('')
+    setCopyStatus('')
+    setManualInvite('')
 
     try {
       const joined = await joinRoomByCode({
@@ -786,6 +826,8 @@ function OnlineRoomPanel({
       setPlayers([])
       setConnectionStatus('reconnecting')
       setRoomCodeInput(reconnectCode)
+      setCopyStatus('')
+      setManualInvite('')
       rememberRoomCode(reconnectCode)
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : 'Leave room failed.')
@@ -794,272 +836,194 @@ function OnlineRoomPanel({
     }
   }
 
+  const connectionBadge = room ? (
+    <span
+      className={`online-room-connection online-room-connection--${connectionStatus}`}
+      title={`Room connection: ${connectionLabel}. State version ${roomState?.version ?? '—'}.`}
+      aria-label={`${connectionLabel} · v${roomState?.version ?? '—'}`}
+      role="status"
+    >
+      <span className="online-room-connection-dot" aria-hidden="true" />
+      {connectionLabel}<span className="room-sr-only"> · v{roomState?.version ?? '—'}</span>
+    </span>
+  ) : null
+
+  const invitationFeedback = (
+    <>
+      {copyStatus ? <p className="room-copy-status" role="status">{copyStatus}</p> : null}
+      {manualInvite ? (
+        <label className="room-manual-invite">
+          Invitation link
+          <input value={manualInvite} readOnly onFocus={(event) => event.target.select()} />
+        </label>
+      ) : null}
+    </>
+  )
+
   if (variant === 'header') {
+    if (!room) {
+      return null
+    }
+
     return (
-      <section className="online-room-panel online-room-panel--header" aria-label="Online room setup">
-        <label className="online-room-header-field">
-          <span>Your Name</span>
-          <input
-            ref={displayNameInputRef}
-            type="text"
-            value={displayName}
-            onChange={handleDisplayNameChange}
-            maxLength={8}
-            placeholder="Enter your name"
-            autoComplete="nickname"
-            required
-            aria-invalid={errorText === MISSING_DISPLAY_NAME_ERROR}
-            aria-describedby={errorText ? 'online-room-error' : undefined}
-            disabled={!isSupabaseConfigured || booting || busy || Boolean(room)}
-          />
-        </label>
-
+      <section className="online-room-panel online-room-panel--header room-hub" aria-label="Your online room">
+        <span className="online-room-code">Room <b>{room.code}</b></span>
+        <button type="button" onClick={handleCopyInvitation} aria-label="Copy invitation link">Copy invite</button>
+        <span className="online-room-seat-count" aria-label={`${players.length} players in room`}>{roomSeatCount}</span>
+        {connectionBadge}
         <button
           type="button"
-          disabled={!isSupabaseConfigured || booting || busy || !userId || Boolean(room)}
-          onClick={handleCreateRoom}
+          disabled={busy}
+          onClick={handleLeaveRoom}
+          title={isRoomPlaying ? 'Disconnect and keep your seat available for rejoining.' : undefined}
         >
-          Create Room
+          {getRoomExitButtonLabel(room)}
         </button>
-
-        <label className="online-room-header-field">
-          <span>Join Code</span>
-          <input
-            type="text"
-            value={roomCodeInput}
-            onChange={(event) => setRoomCodeInput(normalizeRoomCode(event.target.value))}
-            maxLength={6}
-            placeholder="ABC123"
-            disabled={!isSupabaseConfigured || booting || busy || Boolean(room)}
-          />
-        </label>
-
-        <button
-          type="button"
-          disabled={
-            !isSupabaseConfigured ||
-            booting ||
-            busy ||
-            !userId ||
-            Boolean(room) ||
-            roomCodeInput.length !== 6
-          }
-          onClick={handleJoinRoom}
-        >
-          Join Room
-        </button>
-
-        <span className="online-room-seat-count">{roomSeatCount}</span>
-
-        {room ? (
-          <span className="online-room-code">
-            Code <b>{room.code}</b>
-          </span>
-        ) : null}
-
-        {room ? (
-          <span
-            className={`online-room-connection online-room-connection--${connectionStatus}`}
-            title="Multiplayer synchronization status and room-state version"
-            role="status"
-          >
-            <span className="online-room-connection-dot" aria-hidden="true" />
-            {connectionLabel} · v{roomState?.version ?? '—'}
-          </span>
-        ) : null}
-
-        {room && !isRoomPlaying && room.host_user_id === userId ? (
-          <button
-            type="button"
-            disabled={
-              busy ||
-              onlineGameBusy ||
-              !onStartOnlineGame ||
-              room.status === 'playing' ||
-              players.length < 3
-            }
-            onClick={onStartOnlineGame}
-          >
-            Start
-          </button>
-        ) : null}
-
-        {room ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={handleLeaveRoom}
-            title={isRoomPlaying ? 'Disconnect and keep your seat available for rejoining.' : undefined}
-          >
-            {getRoomExitButtonLabel(room)}
-          </button>
-        ) : null}
-
-        {errorText ? (
-          <span id="online-room-error" className="online-room-header-error" role="alert">
-            {errorText}
-          </span>
-        ) : null}
-        {!isSupabaseConfigured ? (
-          <span className="online-room-header-error">Supabase env missing</span>
-        ) : null}
+        {invitationFeedback}
+        {visibleError ? <p id="online-room-error" className="room-error" role="alert">{visibleError}</p> : null}
       </section>
     )
   }
 
   return (
-    <section className={`online-room-panel${isRoomPlaying ? ' compact' : ''}`}>
-      <h3>Online Multiplayer (Supabase Rooms)</h3>
-
-      {!isRoomPlaying ? (
-        <p className="online-room-copy">
-          Create or join a room for up to 8 players. Seats, ready state, and gameplay
-          sync live through Supabase.
-        </p>
-      ) : null}
-
-      {!isSupabaseConfigured ? (
-        <p className="online-room-copy">
-          Supabase is not configured yet. Add `VITE_SUPABASE_URL` and
-          `VITE_SUPABASE_PUBLISHABLE_KEY` in your `.env.local`.
-        </p>
-      ) : null}
-
-      {!isRoomPlaying ? (
-        <div className="online-room-controls">
-          <label>
-            Your Name
-            <input
-              ref={displayNameInputRef}
-              type="text"
-              value={displayName}
-              onChange={handleDisplayNameChange}
-              maxLength={8}
-              placeholder="Enter your name"
-              autoComplete="nickname"
-              required
-              aria-invalid={errorText === MISSING_DISPLAY_NAME_ERROR}
-              aria-describedby={errorText ? 'online-room-error' : undefined}
-              disabled={booting || busy}
-            />
-          </label>
-        </div>
-      ) : null}
-
-      {!isSupabaseConfigured ? null : !room ? (
-        <div className="online-room-actions">
-          <button type="button" disabled={booting || busy || !userId} onClick={handleCreateRoom}>
-            Create Room
-          </button>
-
-          <label>
-            Join Code
-            <input
-              type="text"
-              value={roomCodeInput}
-              onChange={(event) => setRoomCodeInput(normalizeRoomCode(event.target.value))}
-              maxLength={6}
-              placeholder="ABC123"
-              disabled={booting || busy || !userId}
-            />
-          </label>
-
-          <button
-            type="button"
-            disabled={booting || busy || !userId || roomCodeInput.length !== 6}
-            onClick={handleJoinRoom}
-          >
-            Join Room
-          </button>
-        </div>
-      ) : (
-        <div className="online-room-live">
-          <p>
-            Room Code: <b>{room.code}</b> | Status: <b>{room.status}</b> | Players:{' '}
-            <b>
-              {players.length}/{room.max_players}
-            </b>
-          </p>
-          <p className="online-room-connection-detail" role="status">
-            Sync: <b>{connectionLabel}</b> · State version <b>{roomState?.version ?? '—'}</b>
-          </p>
-          <div className="online-room-actions">
-            {!isRoomPlaying ? (
-              <button type="button" disabled={busy || !myPlayer} onClick={handleToggleReady}>
-                {myPlayer?.is_ready ? 'Mark Not Ready' : 'Mark Ready'}
-              </button>
-            ) : null}
-            {!isRoomPlaying && room.host_user_id === userId ? (
-              <button
-                type="button"
-                disabled={
-                  busy ||
-                  onlineGameBusy ||
-                  !onStartOnlineGame ||
-                  room.status === 'playing' ||
-                  players.length < 3
-                }
-                onClick={onStartOnlineGame}
-              >
-                Start Online Game
-              </button>
-            ) : null}
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setRefreshTick((previous) => previous + 1)}
-            >
-              Refresh Room
-            </button>
-            <button type="button" disabled={busy} onClick={handleLeaveRoom}>
-              {getRoomExitButtonLabel(room)} Room
-            </button>
-          </div>
-          {isRoomPlaying ? (
-            <p className="online-room-copy">
-              Disconnect keeps your seat. Rejoin this active game with the same
-              room code and browser profile.
-            </p>
-          ) : null}
-          {!isRoomPlaying && room.host_user_id === userId && players.length < 3 ? (
-            <p className="online-room-copy">
-              Need at least 3 players to start this game mode.
-            </p>
-          ) : null}
-        </div>
-      )}
-
-      {!isSupabaseConfigured || isRoomPlaying ? null : (
-        <div className="online-room-seats">
-          {seatRows.map((seat) => (
-            <div
-              key={seat.seatIndex}
-              className={`seat-card${seat.occupant ? ' occupied' : ''}${seat.occupant?.is_ready ? ' ready' : ''}`}
-            >
-              <strong>Seat {seat.seatIndex + 1}</strong>
-              {seat.occupant ? (
-                <>
-                  <span className="seat-name">
-                    {seat.occupant.display_name}
-                    {seat.occupant.user_id === userId ? ' (You)' : ''}
-                  </span>
-                  <span className="seat-state">
-                    {seat.occupant.is_ready ? 'Ready' : 'Not Ready'}
-                  </span>
-                </>
-              ) : (
-                <span>Open seat</span>
-              )}
+    <section className={`online-room-panel room-hub ${room ? 'room-hub--lobby' : 'room-hub--welcome'}`} aria-labelledby="room-hub-title">
+      {!room ? (
+        <>
+          <div className="room-welcome-story">
+            <span className="room-eyebrow">A word game with a poker face</span>
+            <h1 id="room-hub-title">Good words.<br /><em>Better arguments.</em></h1>
+            <p className="room-lead">Bet on your word, argue its connection, and win the table’s vote.</p>
+            <div className="room-game-facts">
+              <span>3–8 friends</span><span>One device each</span><span>No account needed</span>
             </div>
-          ))}
-        </div>
-      )}
+            <div className="room-how-it-works" aria-label="How to play">
+              <div><span className="room-step-number">01</span><strong>Peek & bet</strong><p>You get one hidden word. Peek privately, then decide how much to bet.</p></div>
+              <div><span className="room-step-number">02</span><strong>Make your case</strong><p>Explain why your word connects best. A clever argument can change everything.</p></div>
+              <div><span className="room-step-number">03</span><strong>Vote & win</strong><p>Player votes, the Judge, and word similarity decide who wins the pot.</p></div>
+            </div>
+            <p className="room-voice-note">Play in the same room or hop on a voice call so everyone can hear the arguments.</p>
+          </div>
 
-      {errorText ? (
-        <p id="online-room-error" className="error-text" role="alert">
-          {errorText}
-        </p>
-      ) : null}
+          <div className="room-entry-card">
+            <span className="room-eyebrow">Bring your people</span>
+            <h2>Meet at the table.</h2>
+            <p>Create a private room, or join a friend’s game.</p>
+            <label className="room-field">
+              Your Name
+              <input
+                ref={displayNameInputRef}
+                type="text"
+                value={displayName}
+                onChange={handleDisplayNameChange}
+                maxLength={8}
+                placeholder="Enter your name"
+                autoComplete="nickname"
+                required
+                aria-invalid={errorText === MISSING_DISPLAY_NAME_ERROR}
+                aria-describedby={visibleError ? 'online-room-error' : undefined}
+                disabled={!isSupabaseConfigured || booting || busy}
+              />
+            </label>
+            <button className="room-primary" type="button" disabled={entryDisabled} onClick={handleCreateRoom}>
+              Create Room
+            </button>
+            <div className="room-entry-divider"><span>or join your friends</span></div>
+            <div className="room-join-row">
+              <label className="room-field">
+                Join Code
+                <input
+                  type="text"
+                  value={roomCodeInput}
+                  onChange={(event) => setRoomCodeInput(normalizeRoomCode(event.target.value))}
+                  maxLength={6}
+                  placeholder="ABC123"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  disabled={entryDisabled}
+                />
+              </label>
+              <button type="button" disabled={entryDisabled || roomCodeInput.length !== 6} onClick={handleJoinRoom}>
+                Join Room
+              </button>
+            </div>
+            {booting ? <p className="room-entry-status" role="status">Connecting to online play…</p> : null}
+            {busy ? <p className="room-entry-status" role="status">Finding your seat…</p> : null}
+            {!isSupabaseConfigured ? <p className="room-entry-status">Online play is unavailable right now. You can still try a practice round.</p> : null}
+            {visibleError ? <p id="online-room-error" className="room-error" role="alert">{visibleError}</p> : null}
+            {onPractice ? <button className="room-practice" type="button" onClick={onPractice} disabled={busy}>Practice locally <span aria-hidden="true">↗</span></button> : null}
+          </div>
+        </>
+      ) : (
+        <>
+          <header className="room-lobby-heading">
+            <div>
+              <span className="room-eyebrow">Your table is taking shape</span>
+              <h1 id="room-hub-title">{isRoomPlaying ? 'Taking your seat…' : 'Gather your friends.'}</h1>
+              <p>{isRoomPlaying ? 'Your game is starting. The table will open in a moment.' : 'Share the invitation, get comfortable, and make your case.'}</p>
+            </div>
+            {connectionBadge}
+          </header>
+          <div className="room-lobby-grid">
+            <div className="room-roster-panel">
+              <div className="room-roster-heading">
+                <h2>At the table</h2>
+                <span className="online-room-seat-count" aria-label={`${players.length} of ${room.max_players ?? MAX_ROOM_PLAYERS} seats filled`}>{roomSeatCount}</span>
+              </div>
+              <ol className="room-roster" aria-label="Players and open seats">
+                {seatRows.map(({ seatIndex, occupant }) => (
+                  <li key={seatIndex} className={`room-seat${occupant ? ' room-seat--occupied' : ''}${occupant?.user_id === userId ? ' room-seat--you' : ''}`}>
+                    <span className="room-seat-avatar" aria-hidden="true">{occupant ? occupant.display_name.slice(0, 1).toUpperCase() : '+'}</span>
+                    <div className="room-seat-identity">
+                      <strong>{occupant ? occupant.display_name : 'Open seat'}{occupant?.user_id === userId ? <span className="room-you-label">You</span> : null}</strong>
+                      <span>{occupant ? (occupant.user_id === room.host_user_id ? 'Host' : `Player ${seatIndex + 1}`) : 'Invite a friend'}</span>
+                    </div>
+                    {occupant ? <span className={`room-ready-badge${occupant.is_ready ? ' is-ready' : ''}`}>{occupant.is_ready ? 'Ready' : 'Not ready'}</span> : null}
+                  </li>
+                ))}
+              </ol>
+            </div>
+            <aside className="room-invite-panel" aria-label="Room invitation and controls">
+              <span className="room-eyebrow">Your private room</span>
+              <div className="online-room-code"><span>Room code</span><b>{room.code}</b></div>
+              <button type="button" className="room-invite-button" onClick={handleCopyInvitation} aria-label="Copy invitation link">Copy invite link <span aria-hidden="true">↗</span></button>
+              {invitationFeedback}
+              <p className="room-voice-note">Everyone needs their own device. Join a voice call or play together in the same room.</p>
+              <div className="room-start-controls">
+                <p className="room-start-hint" role="status">
+                  {isRoomPlaying
+                    ? 'Opening the game…'
+                    : players.length < 3
+                      ? `Waiting for ${3 - players.length} more ${players.length === 2 ? 'friend' : 'friends'}. You need at least 3 players to start.`
+                      : isHost
+                        ? 'Your table is ready to play. Start whenever everyone is here.'
+                        : 'The host will start the game when everyone is here.'}
+                </p>
+                {!isRoomPlaying ? (
+                  <>
+                    <button type="button" className="room-ready-button" aria-pressed={Boolean(myPlayer?.is_ready)} disabled={busy || !myPlayer} onClick={handleToggleReady}>
+                      {myPlayer?.is_ready ? 'Ready ✓' : 'I’m ready'}
+                    </button>
+                    {isHost ? (
+                      <button
+                        type="button"
+                        className="room-primary"
+                        disabled={busy || onlineGameBusy || !onStartOnlineGame || players.length < 3}
+                        onClick={onStartOnlineGame}
+                      >
+                        {onlineGameBusy ? 'Starting…' : 'Start'}
+                      </button>
+                    ) : null}
+                    <p className="room-readiness-note">Ready lets the table know you’re set. The host can start with 3 or more players.</p>
+                  </>
+                ) : null}
+                <button type="button" className="room-leave" disabled={busy || onlineGameBusy} onClick={handleLeaveRoom}>{getRoomExitButtonLabel(room)}</button>
+              </div>
+              {visibleError ? <p id="online-room-error" className="room-error" role="alert">{visibleError}</p> : null}
+            </aside>
+          </div>
+        </>
+      )}
     </section>
   )
 }

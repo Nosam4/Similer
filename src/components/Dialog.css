@@ -1,0 +1,26 @@
+.stage-overlay {
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.stage-overlay .stage-overlay-card {
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.stage-overlay-current-speaker {
+  margin: 16px 0 0;
+  color: #fff8df;
+}
+
+.stage-overlay-current-speaker strong {
+  color: #f7d875;
+}
+
+@media (max-height: 560px) {
+  .stage-overlay .stage-overlay-card {
+    padding: 18px;
+  }
+}

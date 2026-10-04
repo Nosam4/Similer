@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
+import useDialogFocus from './useDialogFocus'
+import './Dialog.css'
 
 function StageOverlay({
   activeKey,
@@ -18,6 +20,9 @@ function StageOverlay({
   onMarkArgument,
   onForceComplete,
 }) {
+  const titleId = useId()
+  const descriptionId = useId()
+  const dialogRef = useDialogFocus({ isOpen: Boolean(activeKey), dialogKey: activeKey })
   const ownWordVisibilityKey = `${activeKey}:${ownWord}`
   const [ownWordVisibility, setOwnWordVisibility] = useState({
     key: ownWordVisibilityKey,
@@ -44,22 +49,24 @@ function StageOverlay({
   return (
     <aside
       key={activeKey}
+      ref={dialogRef}
+      tabIndex={-1}
       className="stage-overlay"
       role="dialog"
       aria-modal="true"
-      aria-live="polite"
-      aria-label={`${title}. Judge: ${judgeName ?? 'pending'}. ${wordLabel}: ${judgeWord ?? 'pending'}. ${message}`}
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
     >
       <div className="stage-overlay-card">
         <div className="stage-overlay-heading">
           <p className="stage-overlay-kicker">{kicker}</p>
           {totalCount > 0 ? (
-            <span>
+            <span role="status">
               {arguedCount}/{totalCount}
             </span>
           ) : null}
         </div>
-        <h2>{title}</h2>
+        <h2 id={titleId}>{title}</h2>
         <div className="stage-overlay-judge-details">
           <p>
             <span>Judge</span>
@@ -70,7 +77,13 @@ function StageOverlay({
             <b>{judgeWord ?? 'Revealed word'}</b>
           </p>
         </div>
-        <p>{message}</p>
+        <p id={descriptionId}>{message}</p>
+        {markedSpeaker ? (
+          <p className="stage-overlay-current-speaker" aria-live="polite">
+            {markedSpeaker.argued ? 'Finished: ' : 'Argument for: '}
+            <strong>{markedSpeaker.playerName}</strong>
+          </p>
+        ) : null}
         {canShowOwnWord ? (
           <div className="stage-overlay-own-word">
             <label>

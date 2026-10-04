@@ -1,6 +1,19 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { gsap } from 'gsap'
 import { summarizePlayerStatus } from './uiHelpers'
+import './GameUsability.css'
+
+const STATIC_JUDGE_QUERY = '(max-width: 640px), (prefers-reduced-motion: reduce)'
+
+function subscribeToStaticJudgePreference(onChange) {
+  const query = window.matchMedia(STATIC_JUDGE_QUERY)
+  query.addEventListener('change', onChange)
+  return () => query.removeEventListener('change', onChange)
+}
+
+function getStaticJudgePreference() {
+  return window.matchMedia(STATIC_JUDGE_QUERY).matches
+}
 
 const SEAT_LAYOUTS = {
   1: [{ x: 50, y: 86 }],
@@ -129,6 +142,11 @@ function PokerTable({
   viewerPlayerId = null,
   delayJudgeTransfer = false,
 }) {
+  const prefersStaticJudge = useSyncExternalStore(
+    subscribeToStaticJudgePreference,
+    getStaticJudgePreference,
+    () => false,
+  )
   const judgeWordFlightRef = useRef(null)
   const judgeNameFlightRef = useRef(null)
   const transferDelayRef = useRef(null)
@@ -139,7 +157,8 @@ function PokerTable({
   const judgeTransferKey = judgeId === null ? '' : `${handNumber}:${judgeId}`
   const centerJudgeWord = judge?.holeWord ?? judgeWord
   const isJudgeTransferPending = Boolean(
-    judge && centerJudgeWord && judgeTransferKey && settledTransferKey !== judgeTransferKey,
+    judge && centerJudgeWord && judgeTransferKey && settledTransferKey !== judgeTransferKey &&
+      (delayJudgeTransfer || !prefersStaticJudge),
   )
   const isJudgeTransferDelayed = Boolean(isJudgeTransferPending && delayJudgeTransfer)
   const shouldRunJudgeTransfer = Boolean(isJudgeTransferPending && !isJudgeTransferDelayed)
@@ -156,7 +175,7 @@ function PokerTable({
     judgeFlightIndex >= 0 ? fullLayout[judgeFlightIndex] ?? fullLayout[fullLayout.length - 1] : null
   const shouldShowJudgeCenter = Boolean(centerJudgeWord && (!judge || !isJudgeTransferPending))
   const centerCopy = judge
-    ? `${judge.name}${dealerPlayerId === judge.id ? ' · Dealer' : ''}`
+    ? `${judge.name}${viewerPlayerId === judge.id ? ' · You' : ''}${dealerPlayerId === judge.id ? ' · Dealer' : ''}`
     : judgeWord
       ? 'Neutral judge word'
       : 'Judge word revealed after opening statements'
@@ -233,7 +252,7 @@ function PokerTable({
         </span>
         <span>Ante {potSummary.ante}</span>
         <span>Min {potSummary.minRaise}</span>
-        <span>{wordBankSize} words</span>
+        {wordBankSize != null ? <span>{wordBankSize} words</span> : null}
       </div>
 
       <div className="poker-felt">
@@ -273,6 +292,7 @@ function PokerTable({
           {visualSeats.map(({ player, position }) => {
             const isDealer = dealerPlayerId === player.id
             const isActor = currentPlayerId === player.id
+            const isViewer = viewerPlayerId === player.id
             const forceWordVisible =
               player.isJudge || phase === 'debate' || phase === 'showdownVoting' || handComplete
             const isWordVisible =
@@ -290,7 +310,8 @@ function PokerTable({
                 key={player.id}
                 className={`table-seat${isActor ? ' active' : ''}${
                   player.folded ? ' folded' : ''
-                }${player.stack <= 0 ? ' busted' : ''}`}
+                }${player.stack <= 0 ? ' busted' : ''}${isViewer ? ' viewer-seat' : ''}`}
+                aria-label={`${player.name}${isViewer ? ', you' : ''}${isActor ? ', current turn' : ''}`}
                 style={{ '--seat-x': `${position.x}%`, '--seat-y': `${position.y}%` }}
               >
                 <div className="seat-avatar-wrap">
@@ -302,6 +323,7 @@ function PokerTable({
 
                 <div className="seat-panels">
                   <div className="seat-panel seat-word-panel">
+                    {isViewer ? <span className="personal-word-label">Your word</span> : null}
                     <strong title={wordText}>{wordText}</strong>
                     {canControlWord ? (
                       <button
@@ -309,6 +331,7 @@ function PokerTable({
                         className="word-eye-button"
                         onClick={() => onToggleWordReveal(player.id)}
                         aria-label={isWordVisible ? `Hide ${player.name}'s word` : `Reveal ${player.name}'s word`}
+                        aria-pressed={isWordVisible}
                         title={isWordVisible ? 'Hide word' : 'Reveal word'}
                       >
                         <EyeIcon isHidden={!isWordVisible} />
@@ -318,8 +341,8 @@ function PokerTable({
 
                   <div className="seat-panel seat-identity-panel">
                     <div>
-                      <strong title={player.name}>{player.name}</strong>
-                      <span className="seat-chip-count">{player.stack}</span>
+                      <strong title={player.name}>{player.name}{isViewer ? ' · You' : ''}</strong>
+                      <span className="seat-chip-count" aria-label={`${player.stack} chips`}>{player.stack}</span>
                     </div>
                     {isActor ? (
                       <span className="seat-state-pill turn-pill">Turn</span>

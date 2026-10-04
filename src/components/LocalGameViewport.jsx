@@ -1,8 +1,12 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
+import HowToPlay from './HowToPlay'
+import useDialogFocus from './useDialogFocus'
+import './Viewport.css'
 
 const DRAWER_TITLES = {
   setup: 'Local Setup',
   log: 'Action Log',
+  help: 'How to play',
 }
 
 function LocalGameViewport({
@@ -14,26 +18,38 @@ function LocalGameViewport({
   table,
   actionPanel,
   logPanel,
+  showGame = true,
+  isPractice = false,
+  onGoOnline,
 }) {
   const [activeDrawer, setActiveDrawer] = useState(null)
-  const hasSetupPanel = Boolean(setupPanel)
-  const visibleDrawer = activeDrawer === 'setup' && !hasSetupPanel ? null : activeDrawer
+  const viewportRef = useRef(null)
+  useLayoutEffect(() => {
+    viewportRef.current?.scrollTo({ top: 0, left: 0 })
+  }, [showGame, eyebrow])
+  const hasSetupPanel = showGame && Boolean(setupPanel)
+  const visibleDrawer = (activeDrawer === 'setup' && !hasSetupPanel) || (activeDrawer === 'log' && !showGame) ? null : activeDrawer
   const drawerTitle = visibleDrawer ? DRAWER_TITLES[visibleDrawer] : ''
   const drawerContent =
     visibleDrawer === 'setup'
       ? setupPanel
       : visibleDrawer === 'log'
         ? logPanel
-        : null
+        : visibleDrawer === 'help' ? <HowToPlay isPractice={isPractice} /> : null
+  const drawerRef = useDialogFocus({
+    isOpen: Boolean(visibleDrawer),
+    dialogKey: visibleDrawer,
+    onClose: () => setActiveDrawer(null),
+  })
 
   function toggleDrawer(drawerName) {
     setActiveDrawer((currentDrawer) => (currentDrawer === drawerName ? null : drawerName))
   }
 
   return (
-    <main className="local-game-viewport">
-      {confetti}
-      {stageOverlay}
+    <main ref={viewportRef} className={`local-game-viewport ${showGame ? 'is-game' : 'is-home'}${isPractice ? ' is-practice' : ''}`}>
+      {showGame && confetti}
+      {showGame && stageOverlay}
 
       <header className="local-game-topbar">
         <div className="local-game-brand">
@@ -41,9 +57,9 @@ function LocalGameViewport({
           <strong>Similer</strong>
         </div>
 
-        <div className="local-game-header-room">{headerPanel}</div>
-
         <nav className="local-game-tools" aria-label="Table tools">
+          {isPractice && <button type="button" onClick={onGoOnline}>Play online</button>}
+          <button type="button" aria-haspopup="dialog" aria-expanded={visibleDrawer === 'help'} onClick={() => toggleDrawer('help')}>How to play</button>
           {hasSetupPanel ? (
             <button
               type="button"
@@ -54,38 +70,38 @@ function LocalGameViewport({
               Setup
             </button>
           ) : null}
-          <button
+          {showGame && <button
             type="button"
             className={activeDrawer === 'log' ? 'active' : ''}
             aria-pressed={activeDrawer === 'log'}
             onClick={() => toggleDrawer('log')}
           >
             Log
-          </button>
+          </button>}
         </nav>
       </header>
 
-      <section className="local-game-stage" aria-label="Game table">
-        {table}
-      </section>
+      <div className="local-game-room-surface" hidden={isPractice}>{headerPanel}</div>
 
-      <section className="local-game-actionbar" aria-label="Game actions">
+      {showGame && <section className="local-game-stage" aria-label="Game table">
+        {table}
+      </section>}
+
+      {showGame && <section className="local-game-actionbar" aria-label="Game actions">
         {actionPanel}
-      </section>
+      </section>}
 
       {visibleDrawer ? (
-        <button
-          type="button"
+        <div
           className="local-game-scrim"
-          aria-label="Close drawer"
-          onClick={() => setActiveDrawer(null)}
+          aria-hidden="true"
         />
       ) : null}
 
       {visibleDrawer ? (
-        <aside className="local-game-drawer is-open" role="dialog" aria-modal="true">
+        <aside ref={drawerRef} tabIndex={-1} className="local-game-drawer is-open" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
           <div className="local-game-drawer-header">
-            <h2>{drawerTitle}</h2>
+            <h2 id="drawer-title">{drawerTitle}</h2>
             <button type="button" onClick={() => setActiveDrawer(null)}>
               Close
             </button>
